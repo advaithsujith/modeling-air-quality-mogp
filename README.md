@@ -1,10 +1,10 @@
 # Modeling Air Quality with Multi-Output Gaussian Processes
 
-This research project investigates whether Multi-Output Gaussian Processes (MOGPs) can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy; can I get more information out of fewer measurements by exploiting the fact that pollutants are correlated?
+This project investigates whether Multi-Output Gaussian Processes (MOGPs) can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy, so can I get more information out of fewer measurements by exploiting the fact that pollutants are correlated?
 
-The dataset is the UCI Air Quality dataset (De Vito et al., 2008): hourly readings from an Italian city between March 2004 and February 2005, comprising 5 metal-oxide sensor channels, 3 meteorological variables, and 4 reference analyser outputs (CO, Benzene/C6H6, NOx, NO2). After cleaning, ~6000 usable rows remain.
+I use the UCI Air Quality dataset (De Vito et al., 2008): hourly readings from an Italian city between March 2004 and February 2005, comprising 5 metal-oxide sensor channels, 3 meteorological variables, and 4 reference analyser outputs (CO, Benzene/C6H6, NOx, NO2). After cleaning, ~6000 usable rows remain.
 
-Three GP model families are compared: independent GPs, ICM (Intrinsic Coregionalization Model), and LCM (Linear Coregionalization Model, Q=2 latents), along with a deep ensemble of MLPs as a non-GP baseline.
+I compare three GP model families: independent GPs, ICM (Intrinsic Coregionalization Model), and LCM (Linear Coregionalization Model, Q=2 latents), along with a deep ensemble of MLPs as a non-GP baseline.
 
 ---
 
@@ -12,13 +12,13 @@ Three GP model families are compared: independent GPs, ICM (Intrinsic Coregional
 
 ### Missing Data
 
-The first thing to address is missingness. The dataset uses -200 as a sentinel for missing values, which are replaced with NaN before any modelling.
+The first thing I address is missingness. The dataset uses -200 as a sentinel for missing values, which I replace with NaN before any modelling.
 
 <p align="center">
   <img src="outputs/01a_missing_data.png" width="750"/>
 </p>
 
-NMHC(GT) is >90% missing and is dropped entirely; no imputation strategy can recover a column with that little signal. The four reference analyser outputs (CO, NOx, NO2, and to a lesser extent C6H6) each have 15-20% missingness, but since I drop any row where *any* target is missing, the effective dataset shrinks further. Sensor columns and meteorological variables have <10% missing and are median-imputed. This asymmetry is important: the reference analysers (expensive) are more often offline than the cheap metal-oxide sensors.
+NMHC(GT) is >90% missing and I drop it entirely; no imputation strategy can recover a column with that little signal. The four reference analyser outputs (CO, NOx, NO2, and to a lesser extent C6H6) each have 15-20% missingness, but since I drop any row where *any* target is missing, the effective dataset shrinks further. Sensor columns and meteorological variables have <10% missing and I median-impute them. This asymmetry matters: the reference analysers (expensive) are more often offline than the cheap metal-oxide sensors.
 
 ### Output Distributions
 
@@ -26,7 +26,7 @@ NMHC(GT) is >90% missing and is dropped entirely; no imputation strategy can rec
   <img src="outputs/01b_output_distributions.png" width="800"/>
 </p>
 
-All four outputs are right-skewed with heavy tails, a pattern typical of pollutant concentrations. CO has a median of ~1.5 mg/m3 with occasional spikes above 8; C6H6 is tightly clustered near 6 ug/m3 with a long tail; NOx has a median around 166 ppb but extends past 1000 ppb during high-traffic events; NO2 is the most Gaussian-looking of the four with a median around 110 ug/m3. The scale differences across outputs, from single-digit CO to triple-digit NOx, matter when interpreting the coregionalization matrices later.
+All four outputs are right-skewed with heavy tails, a pattern typical of pollutant concentrations. CO has a median of ~1.5 mg/m3 with occasional spikes above 8; C6H6 is tightly clustered near 6 ug/m3 with a long tail; NOx has a median around 166 ppb but extends past 1000 ppb during high-traffic events; NO2 is the most Gaussian-looking of the four with a median around 110 ug/m3. The scale differences across outputs (from single-digit CO to triple-digit NOx) matter when interpreting the coregionalization matrices later.
 
 ### Output Correlations
 
@@ -34,7 +34,7 @@ All four outputs are right-skewed with heavy tails, a pattern typical of polluta
   <img src="outputs/01c_output_correlation.png" width="420"/>
 </p>
 
-This is the key validation for using a MOGP. Everything, especially CO and C6H6, are pretty positively correlated (MOGPs perform better on positive correlations) (r=0.930). Both are direct combustion products that peak together during traffic rush hours. CO-NOx (r=0.786) and C6H6-NOx (r=0.718) are also strong. NO2 is the weakest correlate (r=0.674 with CO, 0.603 with C6H6), which makes sense: NO2 involves secondary photochemical reactions and has a different diurnal cycle than the primary combustion pollutants. All off-diagonal correlations are positive and substantial, which is exactly what is needed for coregionalization to be beneficial.
+This is the key validation for using a MOGP. Everything, especially CO and C6H6, are pretty positively correlated (MOGPs perform better on positive correlations) (r=0.930). Both are direct combustion products that peak together during traffic rush hours. CO-NOx (r=0.786) and C6H6-NOx (r=0.718) are also strong. NO2 is the weakest correlate (r=0.674 with CO, 0.603 with C6H6), which makes sense: NO2 involves secondary photochemical reactions and has a different diurnal cycle than the primary combustion pollutants. All off-diagonal correlations are positive and substantial, which is exactly what I need for coregionalization to be beneficial.
 
 <p align="center">
   <img src="outputs/01f_output_pairplot.png" width="650"/>
@@ -48,7 +48,7 @@ The pairplot confirms these are not just linear relationships; the joint densiti
   <img src="outputs/01d_temporal_patterns.png" width="800"/>
 </p>
 
-The hourly profiles are informative. CO and NOx show classic double-peak patterns: morning rush (7-9am) and evening peak (6-8pm), with a midday dip as atmospheric mixing disperses pollutants. C6H6 follows CO very closely. NO2, by contrast, rises through the day and peaks in the evening, reflecting its dependence on photochemical reactions and secondary formation from NOx. Seasonally, CO and NOx are elevated in winter (Jan, Feb, Nov, Dec), consistent with heating emissions and reduced atmospheric boundary layer height. NO2 is more flat across months. These patterns motivated adding cyclic hour features (sin/cos encoding of hour of day) rather than raw hour integers, which would create a 23 to 0 discontinuity.
+The hourly profiles are informative. CO and NOx show classic double-peak patterns: morning rush (7-9am) and evening peak (6-8pm), with a midday dip as atmospheric mixing disperses pollutants. C6H6 follows CO very closely. NO2, by contrast, rises through the day and peaks in the evening, reflecting its dependence on photochemical reactions and secondary formation from NOx. Seasonally, CO and NOx are elevated in winter (Jan, Feb, Nov, Dec), consistent with heating emissions and reduced atmospheric boundary layer height. NO2 is more flat across months. These patterns motivated me to add cyclic hour features (sin/cos encoding of hour of day) rather than raw hour integers, which would create a 23 to 0 discontinuity.
 
 ### Feature Importance
 
@@ -62,7 +62,7 @@ The sensor columns dominate. S1(CO) is strongly correlated with CO (r=0.88) and 
 
 ## 2. Baseline: Independent GPs
 
-Before introducing any cross-output structure, one ARD-RBF GP is fitted independently to each output. This is a strong baseline: it can learn feature-specific lengthscales per output and model uncertainty, but treats the four pollutants as if they are completely unrelated.
+Before introducing any cross-output structure, I fit one ARD-RBF GP independently to each output. This is a strong baseline: it can learn feature-specific lengthscales per output and model uncertainty, but treats the four pollutants as if they are completely unrelated.
 
 <p align="center">
   <img src="outputs/02a_igp_predictions.png" width="800"/>
@@ -158,7 +158,7 @@ With only 40 training points, the difference in posterior uncertainty is visuall
 
 ## 5. Bayesian Optimization: Pareto Front Discovery
 
-Beyond prediction, MOGPs can serve as surrogates in active learning loops. The question posed here: given a pool of unlabelled time points (cheap sensor readings only), can a MOGP surrogate guide the selection of which points to label with the reference analyser, so as to map the CO-NO2 joint extremes as efficiently as possible?
+Beyond prediction, MOGPs can serve as surrogates in active learning loops. The question I pose here: given a pool of unlabelled time points (cheap sensor readings only), can a MOGP surrogate guide the selection of which points to label with the reference analyser, so as to map the CO-NO2 joint extremes as efficiently as possible?
 
 ### The True Pareto Front
 
@@ -170,7 +170,7 @@ The true CO-NO2 Pareto front (maximising both) spans CO from ~4 to ~12 mg/m3 and
 
 ### Active Learning Comparison
 
-Three strategies are compared, each starting from 30 random initial observations and making 40 sequential selections:
+I compare three strategies, each starting from 30 random initial observations and making 40 sequential selections:
 - **Random search**: select uniformly at random from the pool
 - **Independent GP + Thompson sampling**: fit two independent GPs, draw a posterior sample, find its Pareto front, select from it
 - **LCM + Thompson sampling**: same procedure with a joint MOGP surrogate
@@ -199,7 +199,7 @@ The discovered fronts after 70 total evaluations are visually informative. Rando
 
 ## 6. Comparison with Deep Ensemble MLP
 
-A deep ensemble of 15 MLPs (architecture selected by grid search on the validation set) provides a non-GP baseline with uncertainty estimates. The ensemble variance approximates epistemic uncertainty; residual variance from the training set approximates aleatoric uncertainty.
+I also compare against a deep ensemble of 15 MLPs (architecture selected by grid search on the validation set) as a non-GP baseline with uncertainty estimates. The ensemble variance approximates epistemic uncertainty; residual variance from the training set approximates aleatoric uncertainty.
 
 <p align="center">
   <img src="outputs/06a_nn_parity.png" width="800"/>
