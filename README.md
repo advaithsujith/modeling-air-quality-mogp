@@ -152,7 +152,7 @@ The calibration picture is even more stark. ICM has enormous NLPD variance at sm
   <img src="outputs/04c_uncertainty_n40.png" width="800"/>
 </p>
 
-With only 40 training points, the difference in posterior uncertainty is visually striking. For NOx (bottom-left), the independent GP produces an essentially flat posterior; it has too little information to infer the relationship with Feature 2 and defaults to a wide, uninformative band. LCM, by contrast, produces a structured posterior with a meaningful trend, having borrowed strength from the 40 CO, C6H6, and NO2 observations simultaneously. This is the core promise of MOGPs in data-scarce settings: each measurement informs not just one output but all four at once.
+With only 40 training points, the difference in posterior uncertainty is insane. For NOx (bottom-left), the independent GP produces an essentially flat posterior; it has too little information to infer the relationship with Feature 2 and defaults to a wide, uninformative band. LCM, by contrast, produces a structured posterior with a meaningful trend, having borrowed strength from the 40 CO, C6H6, and NO2 observations simultaneously. This is the core promise of MOGPs in data-scarce settings: each measurement informs not just one output but all four at once.
 
 ---
 
