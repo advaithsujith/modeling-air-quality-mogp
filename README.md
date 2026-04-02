@@ -179,7 +179,7 @@ I compare three strategies, each starting from 30 random initial observations an
   <img src="outputs/05a_hypervolume_trace.png" width="720"/>
 </p>
 
-Random search plateaus quickly; it stumbles onto some non-dominated points by chance but never converges toward the true front (final HV ~1333 vs true HV = 3402, covering only 39% of the optimal volume). Both GP strategies improve dramatically over random. Independent GP+TS reaches HV~3198 (94% of optimal) by iteration 40. LCM+TS reaches HV~3000 (88% of optimal), slightly below IndepGP in final value, but the normalized trace shows LCM converges faster in the first 10-15 iterations.
+Random search plateaus quickly; it stumbles onto some non-dominated points by chance but never converges toward the true front (final HV of 1333 vs true HV of 3402, covering only 39% of the optimal volume). Both GP strategies improve dramatically over random. Independent GP+TS reaches HV of 3198 (94% of optimal) by iteration 40. LCM+TS reaches HV of 3000 (88% of optimal), slightly below IndepGP in final value, but the normalized trace shows LCM converges faster in the first 10-15 iterations.
 
 <p align="center">
   <img src="outputs/05b_normalised_hv.png" width="720"/>
