@@ -1,10 +1,10 @@
 # Modeling Air Quality with Multi-Output Gaussian Processes
 
-This project investigates whether **Multi-Output Gaussian Processes (MOGPs)** can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy — can we get more information out of fewer measurements by exploiting the fact that pollutants are correlated?
+This research project investigates whether Multi-Output Gaussian Processes (MOGPs) can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy; can I get more information out of fewer measurements by exploiting the fact that pollutants are correlated?
 
 The dataset is the UCI Air Quality dataset (De Vito et al., 2008): hourly readings from an Italian city between March 2004 and February 2005, comprising 5 metal-oxide sensor channels, 3 meteorological variables, and 4 reference analyser outputs (CO, Benzene/C6H6, NOx, NO2). After cleaning, ~6000 usable rows remain.
 
-Three GP model families are compared — independent GPs, ICM (Intrinsic Coregionalization Model), and LCM (Linear Coregionalization Model, Q=2 latents) — along with a deep ensemble of MLPs as a non-GP baseline.
+Three GP model families are compared — independent GPs, ICM (Intrinsic Coregionalization Model), and LCM (Linear Coregionalization Model, Q=2 latents), along with a deep ensemble of MLPs as a non-GP baseline.
 
 ---
 
@@ -26,7 +26,7 @@ NMHC(GT) is >90% missing and is dropped entirely — no imputation strategy can 
   <img src="outputs/01b_output_distributions.png" width="800"/>
 </p>
 
-All four outputs are right-skewed with heavy tails — a pattern typical of pollutant concentrations. CO has a median of ~1.5 mg/m³ with occasional spikes above 8; C6H6 is tightly clustered near 6 µg/m³ with a long tail; NOx has a median around 166 ppb but extends past 1000 ppb during high-traffic events; NO2 is the most Gaussian-looking of the four with a median around 110 µg/m³. The scale differences across outputs — from single-digit CO to triple-digit NOx — matter when interpreting the coregionalization matrices later.
+All four outputs are right-skewed with heavy tails — a pattern typical of pollutant concentrations. CO has a median of ~1.5 mg/m³ with occasional spikes above 8; C6H6 is tightly clustered near 6 µg/m³ with a long tail; NOx has a median around 166 ppb but extends past 1000 ppb during high-traffic events; NO2 is the most Gaussian-looking of the four with a median around 110 µg/m³. The scale differences across outputs, from single-digit CO to triple-digit NOx, matter when interpreting the coregionalization matrices later.
 
 ### Output Correlations
 
@@ -34,7 +34,7 @@ All four outputs are right-skewed with heavy tails — a pattern typical of poll
   <img src="outputs/01c_output_correlation.png" width="420"/>
 </p>
 
-This is the key validation for using a MOGP. CO and C6H6 are extremely strongly correlated (r=0.930) — both are direct combustion products that peak together during traffic rush hours. CO–NOx (r=0.786) and C6H6–NOx (r=0.718) are also strong. NO2 is the weakest correlate (r=0.674 with CO, 0.603 with C6H6), which makes sense: NO2 involves secondary photochemical reactions and has a different diurnal cycle than the primary combustion pollutants. All off-diagonal correlations are positive and substantial, which is exactly what is needed for coregionalization to be beneficial.
+This is the key validation for using a MOGP. Everything, especially CO and C6H6, are pretty **positively** correlated (Mogp's perform better on positive corelations) (r=0.930). Both are direct combustion products that peak together during traffic rush hours. CO–NOx (r=0.786) and C6H6–NOx (r=0.718) are also strong. NO2 is the weakest correlate (r=0.674 with CO, 0.603 with C6H6), which makes sense: NO2 involves secondary photochemical reactions and has a different diurnal cycle than the primary combustion pollutants. All off-diagonal correlations are positive and substantial, which is exactly what is needed for coregionalization to be beneficial.
 
 <p align="center">
   <img src="outputs/01f_output_pairplot.png" width="650"/>
@@ -48,7 +48,7 @@ The pairplot confirms these are not just linear relationships — the joint dens
   <img src="outputs/01d_temporal_patterns.png" width="800"/>
 </p>
 
-The hourly profiles are informative. CO and NOx show classic double-peak patterns — morning rush (7–9am) and evening peak (6–8pm) — with a midday dip as atmospheric mixing disperses pollutants. C6H6 follows CO very closely. NO2, by contrast, rises through the day and peaks in the evening, reflecting its dependence on photochemical reactions and secondary formation from NOx. Seasonally, CO and NOx are elevated in winter (Jan, Feb, Nov, Dec), consistent with heating emissions and reduced atmospheric boundary layer height. NO2 is more flat across months. These patterns motivated adding cyclic hour features (sin/cos encoding of hour of day) rather than raw hour integers, which would create a 23→0 discontinuity.
+The hourly profiles are informative. CO and NOx show classic double-peak patterns, morning rush (7–9am) and evening peak (6–8pm), with a midday dip as atmospheric mixing disperses pollutants. C6H6 follows CO very closely. NO2, by contrast, rises through the day and peaks in the evening, reflecting its dependence on photochemical reactions and secondary formation from NOx. Seasonally, CO and NOx are elevated in winter (Jan, Feb, Nov, Dec), consistent with heating emissions and reduced atmospheric boundary layer height. NO2 is more flat across months. These patterns motivated adding cyclic hour features (sin/cos encoding of hour of day) rather than raw hour integers, which would create a 23→0 discontinuity.
 
 ### Feature Importance
 
@@ -56,7 +56,7 @@ The hourly profiles are informative. CO and NOx show classic double-peak pattern
   <img src="outputs/01e_feature_output_correlation.png" width="500"/>
 </p>
 
-The sensor columns dominate. S1(CO) is strongly correlated with CO (r=0.88) and C6H6 (r=0.91) — the metal-oxide CO sensor tracks both combustion pollutants well. S2(NMHC) shows similar behaviour. Meteorological variables (T, RH, AH) have weak correlations with all outputs, though temperature has a modest negative relationship with NOx and NO2, consistent with photochemistry being more active in warmer conditions. The cyclic hour features (sin/cos) show moderate correlations, confirming that time of day carries predictive signal beyond what the sensors capture.
+The sensor columns dominate. S1(CO) is strongly correlated with CO (r=0.88) and C6H6 (r=0.91), the metal-oxide CO sensor tracks both combustion pollutants well. S2(NMHC) shows similar behaviour. Meteorological variables (T, RH, AH) have weak correlations with all outputs, though temperature has a modest negative relationship with NOx and NO2, consistent with photochemistry being more active in warmer conditions. The cyclic hour features (sin/cos) show moderate correlations, confirming that time of day carries predictive signal beyond what the sensors capture.
 
 ---
 
