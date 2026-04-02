@@ -18,7 +18,7 @@ The first thing to address is missingness. The dataset uses -200 as a sentinel f
   <img src="outputs/01a_missing_data.png" width="750"/>
 </p>
 
-NMHC(GT) is >90% missing and is dropped entirely; no imputation strategy can recover a column with that little signal. The four reference analyser outputs (CO, NOx, NO2, and to a lesser extent C6H6) each have 15-20% missingness, but since we drop any row where *any* target is missing, the effective dataset shrinks further. Sensor columns and meteorological variables have <10% missing and are median-imputed. This asymmetry is important: the reference analysers (expensive) are more often offline than the cheap metal-oxide sensors.
+NMHC(GT) is >90% missing and is dropped entirely; no imputation strategy can recover a column with that little signal. The four reference analyser outputs (CO, NOx, NO2, and to a lesser extent C6H6) each have 15-20% missingness, but since I drop any row where *any* target is missing, the effective dataset shrinks further. Sensor columns and meteorological variables have <10% missing and are median-imputed. This asymmetry is important: the reference analysers (expensive) are more often offline than the cheap metal-oxide sensors.
 
 ### Output Distributions
 
