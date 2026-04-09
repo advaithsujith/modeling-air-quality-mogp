@@ -19,6 +19,7 @@ from data_utils import (
     OUTPUT_NAMES, SHORT_OUTPUT_NAMES, SHORT_FEATURE_NAMES, GP_SUBSAMPLE,
 )
 from gp_models import ICM, LCM, IndependentGP
+from sklearn.metrics import r2_score
 from evaluation import rmse, nlpd, summary_table
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
@@ -69,7 +70,7 @@ print(summary_table({"ICM (Q=1)": all_results["ICM (Q=1)"]}))
 
 # %%
 print("\nFitting LCM (Q=2) ...")
-lcm = LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=2)
+lcm = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
 lcm.fit(splits["X_train"], splits["Y_train"])
 print(f"  LCM (Q=2) NLML : {lcm.nlml:.2f}")
 
@@ -188,8 +189,8 @@ if W is not None:
                color=colors_latent[:len(ls_vals)], edgecolor="white", alpha=0.85)
         ax.set_xticks(range(len(ls_vals)))
         ax.set_xticklabels([f"Latent GP {q+1}" for q in range(len(ls_vals))], fontsize=10)
-        ax.set_ylabel("Isotropic Lengthscale")
-        ax.set_title("LCM: Latent GP Lengthscales\n(captures different temporal scales)",
+        ax.set_ylabel("Lengthscale (first dimension)")
+        ax.set_title("LCM: Latent GP Lengthscales (ARD)\n(captures different temporal scales)",
                      fontweight="bold")
 
     plt.tight_layout()
@@ -216,7 +217,7 @@ for col_idx in range(T):
                 max(y_true.max(), mu_p[:, col_idx].max()) + 0.3]
         ax.plot(lims, lims, "k--", lw=1.2)
         ax.set_xlim(lims); ax.set_ylim(lims)
-        r2 = np.corrcoef(y_true, mu_p[:, col_idx])[0, 1] ** 2
+        r2 = r2_score(y_true, mu_p[:, col_idx])
         rmse_val = all_results[model_name][f"Y{col_idx+1} RMSE"]
         ax.set_title(f"{model_name}  Y{col_idx+1}: {oname}\nRMSE={rmse_val:.3f}  R²={r2:.3f}",
                      fontsize=8, fontweight="bold")

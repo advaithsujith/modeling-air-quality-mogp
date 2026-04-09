@@ -19,6 +19,7 @@ from data_utils import (
     GP_SUBSAMPLE,
 )
 from gp_models import IndependentGP
+from sklearn.metrics import r2_score
 from evaluation import rmse, nlpd, summary_table
 
 sns.set_theme(style="whitegrid", font_scale=1.1)
@@ -110,7 +111,7 @@ for i, (ax, col, oname) in enumerate(zip(axes, output_colors, OUTPUT_NAMES)):
             max(y_true.max(), y_pred.max()) + 0.5]
     ax.plot(lims, lims, "k--", lw=1.2, label="Perfect prediction")
     ax.set_xlim(lims); ax.set_ylim(lims)
-    r2 = np.corrcoef(y_true, y_pred)[0, 1] ** 2
+    r2 = r2_score(y_true, y_pred)
     ax.set_xlabel(f"True {SHORT_OUTPUT_NAMES[i]}", fontsize=9)
     ax.set_ylabel(f"Pred {SHORT_OUTPUT_NAMES[i]}", fontsize=9)
     ax.set_title(f"Y{i+1}: RMSE={results['Independent GP'][f'Y{i+1} RMSE']:.3f}  R²={r2:.3f}",

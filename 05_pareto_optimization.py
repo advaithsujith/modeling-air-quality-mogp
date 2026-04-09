@@ -69,18 +69,26 @@ N_ITER   = 40
 N_REPEAT = 5
 
 
-def thompson_sample(model, X_candidates):
-    """Reparameterisation-trick posterior sample: mu + std * z."""
+def thompson_sample(model, X_candidates, rng):
+    """
+    Marginal-output posterior sample: mu + std * z per output.
+
+    Note: this samples each output independently (marginal approximation).
+    True TSEMO-style sampling would draw from the joint T-output Gaussian at
+    each candidate, exploiting posterior cross-output correlations. The marginal
+    approximation is standard practice when full posterior covariance extraction
+    is computationally prohibitive.
+    """
     mu, var = model.predict(X_candidates)
     std = np.sqrt(np.clip(var, 1e-9, None))
-    return mu + std * np.random.randn(*mu.shape)
+    return mu + std * rng.randn(*mu.shape)
 
 
-def select_next(sample_Y):
+def select_next(sample_Y, rng):
     """Pick a uniformly random point from the sample Pareto front."""
     mask = pareto_mask(sample_Y)
     pf_idx = np.where(mask)[0]
-    return pf_idx[np.random.randint(len(pf_idx))] if len(pf_idx) > 0 else np.random.randint(len(sample_Y))
+    return pf_idx[rng.randint(len(pf_idx))] if len(pf_idx) > 0 else rng.randint(len(sample_Y))
 
 
 def run_bo(strategy, seed):
@@ -106,14 +114,14 @@ def run_bo(strategy, seed):
         elif strategy == "independent_gp":
             m = IndependentGP(ARD=True, n_restarts=1)
             m.fit(obs_X, obs_Y)
-            sample = thompson_sample(m, X_cand)
-            chosen_local = select_next(sample)
+            sample = thompson_sample(m, X_cand, rng)
+            chosen_local = select_next(sample, rng)
 
         elif strategy == "lcm":
             m = LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=1)
             m.fit(obs_X, obs_Y)
-            sample = thompson_sample(m, X_cand)
-            chosen_local = select_next(sample)
+            sample = thompson_sample(m, X_cand, rng)
+            chosen_local = select_next(sample, rng)
 
         chosen_global = remaining[chosen_local]
         obs_X  = np.vstack([obs_X,  X_all_s[chosen_global]])

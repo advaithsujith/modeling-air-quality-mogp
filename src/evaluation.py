@@ -92,15 +92,13 @@ def pareto_mask(costs: np.ndarray) -> np.ndarray:
     for i in range(n):
         if not is_efficient[i]:
             continue
-        # Does any currently-efficient point (other than i) dominate i?
-        others = is_efficient.copy()
-        others[i] = False
-        dominated_by_others = np.any(
-            np.all(costs[others] <= costs[i], axis=1)
-            & np.any(costs[others] < costs[i], axis=1)
+        # Mark all points dominated by i (strictly dominated in at least one objective)
+        dominated = (
+            np.all(costs <= costs[i], axis=1)
+            & np.any(costs < costs[i], axis=1)
         )
-        if dominated_by_others:
-            is_efficient[i] = False
+        dominated[i] = False  # do not remove i itself
+        is_efficient[dominated] = False
     return is_efficient
 
 
@@ -142,7 +140,8 @@ def hypervolume_2d(pareto_pts: np.ndarray, ref_point: np.ndarray) -> float:
 
 def default_reference_point(Y: np.ndarray, slack: float = 0.1) -> np.ndarray:
     """
-    Compute a reference point as max_per_objective * (1 + slack).
-    Guaranteed to be dominated by all Pareto-efficient points in Y.
+    Compute a reference point strictly worse than the worst observed value
+    on each objective. Works correctly for both positive and negative Y values.
     """
-    return Y.max(axis=0) * (1 + slack)
+    worst = Y.max(axis=0)
+    return worst + np.abs(worst) * slack

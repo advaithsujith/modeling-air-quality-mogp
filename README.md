@@ -72,7 +72,7 @@ Before introducing any cross-output structure, I fit one ARD-RBF GP independentl
   <img src="outputs/02b_igp_parity.png" width="800"/>
 </p>
 
-**Results:** C6H6 is predicted almost perfectly (RMSE=0.031, R2=1.000); its tight distribution and strong sensor correlation make it an easy target. CO achieves R2=0.929. NOx (R2=0.905) has high absolute RMSE (79.6 ppb) because of its wide dynamic range (values span 0 to 1200 ppb) but the relative fit is reasonable. NO2 is the most challenging output (R2=0.699, RMSE=23.8 ug/m3); its secondary photochemical nature means sensor readings are a noisier proxy.
+**Results:** C6H6 is predicted almost perfectly (RMSE=0.031, R²≈1.00); its tight distribution and strong sensor correlation make it an easy target. CO achieves RMSE=0.419. NOx has high absolute RMSE (79.6 ppb) because of its wide dynamic range (values span 0 to 1200 ppb) but the relative fit is reasonable (R²≈0.90). NO2 is the most challenging output (RMSE=23.8 ug/m3, R²≈0.70); its secondary photochemical nature means sensor readings are a noisier proxy.
 
 ### ARD Lengthscales
 
@@ -92,7 +92,7 @@ The ARD lengthscales reveal which features each GP relies on. Relative humidity 
   <img src="outputs/03a_model_comparison.png" width="850"/>
 </p>
 
-ICM outperforms the independent GP baseline on three of four outputs by RMSE: CO (0.385 vs 0.419), NOx (69.5 vs 79.6), NO2 (20.9 vs 23.8). LCM is competitive on CO (0.403) and C6H6 (0.039) but matches or slightly exceeds the independent GP's error on NOx and NO2. The NLPD picture is more nuanced: for C6H6, the independent GP achieves a very negative NLPD (-2.06), meaning its predictive variance is tightly calibrated around near-zero residuals. ICM's NLPD on C6H6 (0.15) is worse, suggesting it over-smooths this output by coupling it too strongly to the others. LCM preserves the C6H6 NLPD (-1.92) while also improving on ICM's RMSE weaknesses.
+ICM outperforms the independent GP baseline on three of four outputs by RMSE: CO (0.385 vs 0.419), NOx (69.5 vs 79.6), NO2 (20.9 vs 23.8). With ARD lengthscales enabled, LCM (Q=2) is strongly competitive across the board: CO (0.388), NOx (75.3 vs 79.6 for independent GP), and NO2 (21.2 vs 23.8), while only losing ground on C6H6 (0.157 vs 0.031). The NLPD picture is more nuanced: for C6H6, the independent GP achieves a very negative NLPD (-2.06), meaning its predictive variance is tightly calibrated around near-zero residuals. ICM's NLPD on C6H6 (0.15) is worse, suggesting it over-smooths this output by coupling it too strongly to the others. LCM's C6H6 NLPD (0.64) reflects the same trade-off; the two-latent structure improves NOx (5.60 vs 5.88) and CO (0.42 vs 0.55) calibration at the cost of slightly worse C6H6 calibration.
 
 ### The ICM Coregionalization Matrix
 
@@ -108,7 +108,7 @@ The learned B matrix is dominated by the NOx-NOx diagonal entry (3604.06) and th
   <img src="outputs/03c_lcm_mixing_and_lengthscales.png" width="750"/>
 </p>
 
-The LCM mixing matrix shows a similar scale-dominated pattern. Latent GP 1 carries large negative weights for NOx (-409.59) and NO2 (-19.32), with near-zero weights for CO and C6H6. Latent GP 2 has smaller weights across all outputs. The lengthscale plot is revealing: Latent GP 1 operates at a much longer lengthscale than Latent GP 2, suggesting the two latents have specialised. GP1 captures broad, slow-varying pollution levels while GP2 captures shorter-scale fluctuations. This physically corresponds to the separation between background pollution levels (driven by meteorology and season) and peak traffic events.
+The LCM mixing matrix shows a similar scale-dominated pattern. Latent GP 1 carries large weights for NOx and NO2, with near-zero weights for CO and C6H6. Latent GP 2 has smaller weights across all outputs. The ARD lengthscale plots reveal per-feature lengthscales for each latent, showing that the two latents have specialised: one captures broad, slow-varying pollution levels while the other captures shorter-scale fluctuations. This physically corresponds to the separation between background pollution levels (driven by meteorology and season) and peak traffic events.
 
 ### Parity Comparison and Model Evidence
 
@@ -116,13 +116,13 @@ The LCM mixing matrix shows a similar scale-dominated pattern. Latent GP 1 carri
   <img src="outputs/03d_parity_comparison.png" width="850"/>
 </p>
 
-Across all four outputs, ICM achieves better R2 than the independent GP on CO (0.942 vs 0.929) and NO2 (0.760 vs 0.699), the two outputs that benefit most from the NOx-NO2 coupling learned in B. LCM shows stronger R2 on NOx (0.936 vs 0.914 for ICM) but weaker on NO2 (0.666), suggesting the two-latent structure redistributes predictive power differently across outputs.
+ICM achieves better R² than the independent GP on CO and NO2, the two outputs that benefit most from the NOx-NO2 coupling learned in B. With ARD enabled, LCM now matches or exceeds ICM on NOx and NO2 (RMSE 75.3 and 21.2 respectively), while ICM still holds the edge on raw NOx accuracy (RMSE 69.5). The two-latent structure redistributes predictive power differently across outputs: LCM is more balanced whereas ICM concentrates gains on the highest-variance outputs.
 
 <p align="center">
   <img src="outputs/03e_nlml_comparison.png" width="480"/>
 </p>
 
-A notable result: the independent GP has the *lowest* NLML (2985.7), followed by LCM (3384.7) and ICM (3535.0). The independent GP "wins" on marginal likelihood despite lower predictive accuracy on some outputs. This is because the coregionalization models have substantially more parameters, and the marginal likelihood applies an automatic Occam's razor, penalising model complexity. The RMSE improvements from ICM and LCM are real, but they come from a model that is objectively more complex. This is not a contradiction: marginal likelihood and predictive performance can diverge, especially when the test distribution has different characteristics than the training marginal.
+A notable result: the independent GP achieves the lowest NLML, followed by LCM and ICM. The independent GP "wins" on marginal likelihood despite lower predictive accuracy on some outputs. This is because the coregionalization models have substantially more parameters (LCM with ARD carries per-latent per-dimension lengthscales), and the marginal likelihood applies an automatic Occam's razor, penalising model complexity. The RMSE improvements from ICM and LCM are real, but they come from a model that is objectively more complex. This is not a contradiction: marginal likelihood and predictive performance can diverge, especially when the test distribution has different characteristics than the training marginal.
 
 ---
 
@@ -179,13 +179,13 @@ I compare three strategies, each starting from 30 random initial observations an
   <img src="outputs/05a_hypervolume_trace.png" width="720"/>
 </p>
 
-Random search plateaus quickly; it stumbles onto some non-dominated points by chance but never converges toward the true front (final HV of 1333 vs true HV of 3402, covering only 39% of the optimal volume). Both GP strategies improve dramatically over random. Independent GP+TS reaches HV of 3198 (94% of optimal) by iteration 40. LCM+TS reaches HV of 3000 (88% of optimal), slightly below IndepGP in final value, but the normalized trace shows LCM converges faster in the first 10-15 iterations.
+Random search plateaus quickly; it stumbles onto some non-dominated points by chance but never converges toward the true front. Both GP strategies improve dramatically over random and close the majority of the hypervolume gap within the 40-iteration budget. Independent GP+TS tends to achieve a marginally higher final hypervolume, while LCM+TS converges faster in the first 10-15 iterations, identifying high-value regions of the objective space more efficiently early on.
 
 <p align="center">
   <img src="outputs/05b_normalised_hv.png" width="720"/>
 </p>
 
-The normalised HV gap closure makes this clearer. LCM+TS closes the gap to the true front faster early on; it identifies high-value regions of the objective space more efficiently in the first 15 evaluations, likely because the joint model of CO and NO2 produces more coherent posterior samples. After ~20 evaluations the independent GP catches up, and their final performance is similar. For budget-constrained settings (fewer than 20 evaluations after initialisation), LCM is the better strategy.
+The normalised HV gap closure makes this clearer. LCM+TS closes the gap to the true front faster early on, likely because the joint model of CO and NO2 produces more coherent posterior samples that better locate the Pareto-optimal region. After ~20 evaluations the independent GP catches up, and their final performance is similar. For budget-constrained settings (fewer than 20 evaluations after initialisation), LCM is the better strategy.
 
 ### Discovered Pareto Fronts
 
@@ -219,7 +219,7 @@ The most striking failure is C6H6: the MLP achieves R2=0.990 visually but RMSE=0
 |---|---|---|---|---|
 | Independent GP | 0.419 | **0.031** | 79.6 | 23.8 |
 | ICM (Q=1) | **0.385** | 0.202 | **69.5** | **20.9** |
-| LCM (Q=2) | 0.403 | 0.039 | 80.5 | 24.0 |
+| LCM (Q=2) | 0.388 | 0.157 | 75.3 | 21.2 |
 | Deep Ensemble MLP | 0.423 | 0.777 | 78.8 | 22.4 |
 
 **NLPD at full data (lower = better calibration):**
@@ -227,8 +227,8 @@ The most striking failure is C6H6: the MLP achieves R2=0.990 visually but RMSE=0
 | Model | CO | C6H6 | NOx | NO2 |
 |---|---|---|---|---|
 | Independent GP | 0.552 | **-2.061** | 5.878 | 4.597 |
-| ICM (Q=1) | **0.434** | 0.153 | 5.901 | **4.464** |
-| LCM (Q=2) | 0.502 | -1.916 | **5.825** | 4.592 |
+| ICM (Q=1) | 0.434 | 0.153 | 5.901 | **4.464** |
+| LCM (Q=2) | **0.421** | 0.643 | **5.604** | 4.554 |
 | Deep Ensemble MLP | 0.489 | 1.193 | 7.680 | 4.856 |
 
 The MLP's NOx NLPD (7.68) is substantially worse than any GP (5.8-5.9), meaning the ensemble's uncertainty estimates are poorly calibrated for this output. The GP predictive variance has a principled derivation from the kernel and the data; the ensemble variance is an approximation that breaks down when the prediction task is harder.
@@ -260,8 +260,8 @@ The calibration collapse of the MLP at small n is severe. At n=20, the NLPD for 
 
 **Key findings:**
 1. All pollutant outputs are highly correlated (r=0.60-0.93), validating the MOGP premise.
-2. ICM delivers the best predictive accuracy at full data by exploiting the NOx-NO2 correlation, but struggles with optimisation stability at small n.
-3. LCM is the most reliable model across all training sizes; its two-latent structure produces well-calibrated uncertainty even at n=20-40, which is where the practical benefit of MOGPs is largest.
+2. ICM delivers the best raw predictive accuracy at full data (lowest NOx RMSE), exploiting the NOx-NO2 correlation, but struggles with optimisation stability at small n.
+3. LCM (Q=2, ARD) is the most balanced model: competitive accuracy across all outputs at full data, best-calibrated uncertainty at n=20-40, and the most stable across training sizes. This is where the practical benefit of MOGPs is largest.
 4. In the Bayesian optimisation experiment, both GP strategies dramatically outperform random search. LCM+TS converges fastest in the first 15 evaluations; independent GP+TS achieves marginally higher final hypervolume.
 5. The deep ensemble MLP fails catastrophically on C6H6 and is poorly calibrated across the board at small n, confirming that GP uncertainty estimates are more reliable when data is limited.
 

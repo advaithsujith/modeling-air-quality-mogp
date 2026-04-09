@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import ParameterGrid
+from sklearn.metrics import r2_score
 from collections import defaultdict
 
 warnings.filterwarnings("ignore")
@@ -147,7 +148,7 @@ for i, (ax, col, oname) in enumerate(zip(axes, nn_colors, OUTPUT_NAMES)):
             max(y_true.max(), y_pred.max()) + 0.3]
     ax.plot(lims, lims, "k--", lw=1.2, label="Perfect")
     ax.set_xlim(lims); ax.set_ylim(lims)
-    r2 = np.corrcoef(y_true, y_pred)[0, 1] ** 2
+    r2 = r2_score(y_true, y_pred)
     ax.set_xlabel(f"True {SHORT_OUTPUT_NAMES[i]}", fontsize=9)
     ax.set_ylabel(f"Pred {SHORT_OUTPUT_NAMES[i]}", fontsize=9)
     ax.set_title(f"Y{i+1}: RMSE={nn_results[f'Y{i+1} RMSE']:.3f}  R²={r2:.3f}",
