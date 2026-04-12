@@ -52,7 +52,7 @@ def make_model_configs(n):
         "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
     }
     if n <= LCM_MAX_N:
-        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=2)
+        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
     return configs
 
 # %% [markdown]
@@ -197,27 +197,27 @@ for n in TRAIN_SIZES:
 # ## Posterior Uncertainty at n=40: LCM vs Independent GP
 
 # %%
-# Project data onto most informative feature (smallest mean ARD LS from full IndepGP)
-igp_full = IndependentGP(ARD=True, n_restarts=2)
-igp_full.fit(splits["X_train"], splits["Y_train"])
-ls_all = igp_full.lengthscales()
-mean_ls = np.mean(np.stack(ls_all, axis=0), axis=0)
-best_feat_idx = int(np.argmin(mean_ls))
-print(f"\nMost informative feature (smallest mean LS): index {best_feat_idx}")
-
+# Project data onto most informative feature (smallest mean ARD LS from the n=40 IndepGP)
+# Using the n=40 model keeps feature importance consistent with what is being visualised.
 sub40 = subsample_train(splits, 40, random_state=0)
 igp40 = IndependentGP(ARD=True, n_restarts=2)
 igp40.fit(sub40["X_train"], sub40["Y_train"])
 
-lcm40 = LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=2)
+ls_all40 = igp40.lengthscales()
+mean_ls40 = np.mean(np.stack(ls_all40, axis=0), axis=0)
+best_feat_idx = int(np.argmin(mean_ls40))
+print(f"\nMost informative feature (smallest mean LS from n=40 IGP): index {best_feat_idx}")
+
+lcm40 = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
 lcm40.fit(sub40["X_train"], sub40["Y_train"])
 
+# Use the n=40 training range and mean as the conditional grid reference
 x_grid_1d = np.linspace(
-    splits["X_train"][:, best_feat_idx].min(),
-    splits["X_train"][:, best_feat_idx].max(),
+    sub40["X_train"][:, best_feat_idx].min(),
+    sub40["X_train"][:, best_feat_idx].max(),
     120
 )
-X_grid = np.tile(splits["X_train"].mean(axis=0), (120, 1))
+X_grid = np.tile(sub40["X_train"].mean(axis=0), (120, 1))
 X_grid[:, best_feat_idx] = x_grid_1d
 
 mu_igp40, var_igp40 = igp40.predict(X_grid)
@@ -259,7 +259,7 @@ savefig("04c_uncertainty_n40.png")
 
 # %%
 print("\nConclusion:")
-print("  In the low-data regime (n ≤ 80), LCM outperforms Independent GP")
-print("  on RMSE and NLPD across all 4 outputs because it exploits the strong")
-print("  CO–Benzene–NOx–NO2 correlations.  The advantage narrows as n grows.")
+print("  In the low-data regime, MOGP models (ICM/LCM) exploit the strong")
+print("  CO-Benzene-NOx-NO2 correlations, with LCM providing the most stable")
+print("  calibrated uncertainty. The advantage narrows as n grows.")
 print("  This validates MOGP surrogates when reference-analyser budgets are tight.")

@@ -92,10 +92,10 @@ def pareto_mask(costs: np.ndarray) -> np.ndarray:
     for i in range(n):
         if not is_efficient[i]:
             continue
-        # Mark all points dominated by i (strictly dominated in at least one objective)
+        # Mark all points dominated BY i (i is at least as good and strictly better on one)
         dominated = (
-            np.all(costs <= costs[i], axis=1)
-            & np.any(costs < costs[i], axis=1)
+            np.all(costs[i] <= costs, axis=1)
+            & np.any(costs[i] < costs, axis=1)
         )
         dominated[i] = False  # do not remove i itself
         is_efficient[dominated] = False

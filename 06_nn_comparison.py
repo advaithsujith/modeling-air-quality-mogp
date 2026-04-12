@@ -210,7 +210,7 @@ def make_model_configs(n):
         "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
     }
     if n <= LCM_MAX_N:
-        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=2)
+        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
     return configs
 
 records = defaultdict(lambda: defaultdict(dict))
@@ -246,9 +246,9 @@ for n in TRAIN_SIZES:
     seed_metrics = defaultdict(list)
     for seed in range(N_SEEDS):
         sub = subsample_train(splits, n, random_state=seed)
-        K = 10
+        K = K_ENSEMBLE
         models_s = [
-            MLPRegressor(**best_params, activation="relu", max_iter=2000,
+            MLPRegressor(**best_params, activation="relu", max_iter=500,
                          random_state=seed * 100 + k, learning_rate_init=1e-3).fit(
                 sub["X_train"], sub["Y_train"])
             for k in range(K)

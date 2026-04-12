@@ -179,7 +179,7 @@ if W is not None:
                     color="white" if abs(W[i, j]) > vmax_w * 0.5 else "black")
     ax.set_title("LCM Mixing Matrix  W\n(T × Q loading matrix)", fontweight="bold")
 
-    # Right: per-latent isotropic lengthscales (ARD=False for LCM)
+    # Right: per-latent ARD lengthscales (first dimension shown; LCM uses ARD=True)
     ax = axes[1]
     ls = lcm.latent_lengthscales()   # (Q, 1) or (Q, D) depending on ARD
     if ls is not None:
@@ -190,7 +190,7 @@ if W is not None:
         ax.set_xticks(range(len(ls_vals)))
         ax.set_xticklabels([f"Latent GP {q+1}" for q in range(len(ls_vals))], fontsize=10)
         ax.set_ylabel("Lengthscale (first dimension)")
-        ax.set_title("LCM: Latent GP Lengthscales (ARD)\n(captures different temporal scales)",
+        ax.set_title("LCM: Latent GP Lengthscales (ARD)\n(each latent GP learns its own feature relevance)",
                      fontweight="bold")
 
     plt.tight_layout()
@@ -232,7 +232,7 @@ savefig("03d_parity_comparison.png")
 # ## NLML Comparison  (Model Evidence)
 
 # %%
-igp_reload = IndependentGP(ARD=True, n_restarts=2)
+igp_reload = IndependentGP(ARD=True, n_restarts=3)
 igp_reload.fit(splits["X_train"], splits["Y_train"])
 
 nlml_vals = {

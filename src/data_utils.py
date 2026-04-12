@@ -196,11 +196,8 @@ def get_Xy(df: pd.DataFrame | None = None) -> tuple[np.ndarray, np.ndarray]:
     # Step 2: drop rows where any target is NaN
     df = df.dropna(subset=output_raw_names).reset_index(drop=True)
 
-    # Step 3: median-impute feature NaNs
-    feature_raw = _SENSOR_COLS + _MET_COLS
-    for col in feature_raw:
-        median = df[col].median()
-        df[col] = df[col].fillna(median)
+    # Note: feature NaN imputation is intentionally deferred to split_and_scale()
+    # so that medians are computed only from training data (no data leakage).
 
     # Ensure time features are present
     if "HourSin" not in df.columns:
@@ -243,6 +240,20 @@ def split_and_scale(
     X_train, X_val, Y_train, Y_val = train_test_split(
         X_tv, Y_tv, test_size=val_frac, random_state=random_state
     )
+
+    # Median-impute feature NaNs using training-set medians only (no leakage)
+    n_features = X_train.shape[1]
+    train_medians = np.nanmedian(X_train, axis=0)
+    for fi in range(n_features):
+        nan_mask_tr  = np.isnan(X_train[:, fi])
+        nan_mask_val = np.isnan(X_val[:, fi])
+        nan_mask_te  = np.isnan(X_test[:, fi])
+        if nan_mask_tr.any():
+            X_train[nan_mask_tr, fi] = train_medians[fi]
+        if nan_mask_val.any():
+            X_val[nan_mask_val, fi] = train_medians[fi]
+        if nan_mask_te.any():
+            X_test[nan_mask_te, fi] = train_medians[fi]
 
     scaler_X = StandardScaler()
     X_train = scaler_X.fit_transform(X_train)

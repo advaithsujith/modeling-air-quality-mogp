@@ -118,7 +118,7 @@ def run_bo(strategy, seed):
             chosen_local = select_next(sample, rng)
 
         elif strategy == "lcm":
-            m = LCM(num_latents=2, W_rank=1, ARD=False, n_restarts=1)
+            m = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=1)
             m.fit(obs_X, obs_Y)
             sample = thompson_sample(m, X_cand, rng)
             chosen_local = select_next(sample, rng)
