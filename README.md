@@ -229,9 +229,9 @@ The most striking failure is C6H6: the MLP achieves R2=0.990 visually but RMSE=0
 | Independent GP | 0.552 | **-2.061** | 5.878 | 4.597 |
 | ICM (Q=1) | 0.434 | 0.153 | 5.901 | **4.464** |
 | LCM (Q=2) | **0.421** | 0.643 | **5.604** | 4.554 |
-| Deep Ensemble MLP | 0.489 | 1.193 | 7.680 | 4.856 |
+| Deep Ensemble MLP | 0.532 | 1.256 | 5.790 | 4.563 |
 
-The MLP's NOx NLPD (7.68) is substantially worse than any GP (5.8-5.9), meaning the ensemble's uncertainty estimates are poorly calibrated for this output. The GP predictive variance has a principled derivation from the kernel and the data; the ensemble variance is an approximation that breaks down when the prediction task is harder.
+After the methodology fixes (K=15 ensemble, ARD-consistent comparison), the MLP's NOx NLPD (5.79) is now comparable to the independent GP (5.88) and ICM (5.90), though still above LCM (5.60). The clearest calibration failures are on C6H6 (NLPD 1.26 vs independent GP's -2.06) and CO (0.53 vs LCM's 0.42), where the ensemble variance poorly captures the tight, skewed distribution. The GP predictive variance has a principled derivation from the kernel and the data; the ensemble variance is an approximation that is most reliable when ensemble members disagree in informative ways, which requires sufficient training data.
 
 ### Low-Data Regime with MLP
 
@@ -263,7 +263,7 @@ The calibration collapse of the MLP at small n is severe. At n=20, the NLPD for 
 2. ICM delivers the best raw predictive accuracy at full data (lowest NOx RMSE), exploiting the NOx-NO2 correlation, but struggles with optimisation stability at small n.
 3. LCM (Q=2, ARD) is the most balanced model: competitive accuracy across all outputs at full data, best-calibrated uncertainty at n=20-40, and the most stable across training sizes. This is where the practical benefit of MOGPs is largest.
 4. In the Bayesian optimisation experiment, both GP strategies dramatically outperform random search (37.8% of true HV). LCM+TS achieves the highest final hypervolume (94.7%) and converges faster throughout, outperforming independent GP+TS (92.8%) by exploiting CO-NO2 posterior correlations.
-5. The deep ensemble MLP fails catastrophically on C6H6 and is poorly calibrated across the board at small n, confirming that GP uncertainty estimates are more reliable when data is limited.
+5. The deep ensemble MLP fails catastrophically on C6H6 and has poor calibration at small n; after fixing the ensemble size and ARD parity, its NOx calibration at full data matches the GPs, but C6H6 and CO NLPD remain substantially worse. GP uncertainty estimates are more reliable when data is limited.
 
 ---
 
