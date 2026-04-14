@@ -189,64 +189,58 @@ for n in TRAIN_SIZES:
     print(row)
 
 # %% [markdown]
-# ## Posterior Uncertainty at n=40: LCM vs Independent GP
+# ## Predictive Uncertainty at n=40: LCM vs Independent GP
+#
+# Fit both models on n=40 training points, predict on the full test set,
+# and sort by true target value (same style as script 02). This shows actual
+# out-of-sample predictive uncertainty rather than a 1-D conditional slice.
 
 # %%
-# Project data onto most informative feature (smallest mean ARD LS from the n=40 IndepGP)
-# Using the n=40 model keeps feature importance consistent with what is being visualised.
 sub40 = subsample_train(splits, 40, random_state=0)
 igp40 = IndependentGP(ARD=True, n_restarts=2)
 igp40.fit(sub40["X_train"], sub40["Y_train"])
 
-ls_all40 = igp40.lengthscales()
-mean_ls40 = np.mean(np.stack(ls_all40, axis=0), axis=0)
-best_feat_idx = int(np.argmin(mean_ls40))
-print(f"\nMost informative feature (smallest mean LS from n=40 IGP): index {best_feat_idx}")
-
 lcm40 = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
 lcm40.fit(sub40["X_train"], sub40["Y_train"])
 
-# Use the n=40 training range and mean as the conditional grid reference
-x_grid_1d = np.linspace(
-    sub40["X_train"][:, best_feat_idx].min(),
-    sub40["X_train"][:, best_feat_idx].max(),
-    120
-)
-X_grid = np.tile(sub40["X_train"].mean(axis=0), (120, 1))
-X_grid[:, best_feat_idx] = x_grid_1d
+mu_igp40, var_igp40 = igp40.predict(splits["X_test"])
+mu_lcm40, var_lcm40 = lcm40.predict(splits["X_test"])
 
-mu_igp40, var_igp40 = igp40.predict(X_grid)
-mu_lcm40, var_lcm40 = lcm40.predict(X_grid)
+from evaluation import rmse as _rmse
 
 output_colors = ["#4878CF", "#E87722", "#6ACC65", "#D62728"]
 
-fig, axes = plt.subplots(2, 2, figsize=(13, 9))
-axes_flat = axes.flatten()
+fig, axes = plt.subplots(2, 4, figsize=(18, 9))
+x_plot = np.arange(splits["n_test"])
 
-for i, (ax, col) in enumerate(zip(axes_flat, output_colors)):
-    x_train_1d = sub40["X_train"][:, best_feat_idx]
-    y_train     = sub40["Y_train"][:, i]
+for i, col in enumerate(output_colors):
+    y_true = splits["Y_test"][:, i]
+    order  = np.argsort(y_true)
 
-    mu_i = mu_igp40[:, i];  std_i = np.sqrt(var_igp40[:, i])
-    ax.fill_between(x_grid_1d, mu_i - 2*std_i, mu_i + 2*std_i,
-                    alpha=0.18, color="#888888")
-    ax.plot(x_grid_1d, mu_i, "--", color="#888888", lw=1.5, label="Independent GP ±2σ")
+    for row, (mu, var, label, ls) in enumerate([
+        (mu_igp40, var_igp40, "Independent GP", "--"),
+        (mu_lcm40, var_lcm40, "LCM (Q=2)",      "-"),
+    ]):
+        ax = axes[row, i]
+        std = np.sqrt(var[:, i])
+        mu_s = mu[order, i]
+        std_s = std[order]
+        y_s   = y_true[order]
 
-    mu_l = mu_lcm40[:, i];  std_l = np.sqrt(var_lcm40[:, i])
-    ax.fill_between(x_grid_1d, mu_l - 2*std_l, mu_l + 2*std_l,
-                    alpha=0.2, color=col)
-    ax.plot(x_grid_1d, mu_l, "-", color=col, lw=2, label="LCM (Q=2) ±2σ")
-
-    ax.scatter(x_train_1d, y_train, s=30, color="black", zorder=5,
-               label="Training obs (n=40)")
-    ax.set_xlabel(f"Feature {best_feat_idx+1} (scaled)")
-    ax.set_ylabel(OUTPUT_NAMES[i])
-    ax.set_title(f"Y{i+1}: {SHORT_OUTPUT_NAMES[i]}  —  n=40", fontweight="bold", fontsize=9)
-    ax.legend(fontsize=7, frameon=False)
+        ax.fill_between(x_plot, mu_s - 2*std_s, mu_s + 2*std_s,
+                        alpha=0.25, color=col)
+        ax.plot(x_plot, mu_s, ls, color=col, lw=1.5, label=f"{label} mean")
+        ax.plot(x_plot, y_s, "k.", ms=2.5, alpha=0.45, label="True")
+        r = _rmse(y_true, mu[:, i])
+        ax.set_title(f"Y{i+1}: {SHORT_OUTPUT_NAMES[i]}  ({label})\nRMSE={r:.3f}",
+                     fontsize=8, fontweight="bold")
+        ax.set_xlabel("Test sample (sorted by true value)", fontsize=7)
+        ax.set_ylabel(OUTPUT_NAMES[i], fontsize=7)
+        ax.legend(fontsize=6, frameon=False)
 
 fig.suptitle(
-    "Posterior Uncertainty: LCM vs Independent GP at n=40\n"
-    "(LCM borrows strength from all 4 outputs → tighter credible bands)",
+    "Predictive Uncertainty at n=40: Independent GP vs LCM (Q=2)\n"
+    "Top row: Independent GP  |  Bottom row: LCM  |  Sorted by true target value",
     fontsize=11, fontweight="bold"
 )
 plt.tight_layout()
