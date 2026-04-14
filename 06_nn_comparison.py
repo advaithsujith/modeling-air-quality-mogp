@@ -78,15 +78,15 @@ print(f"  Val RMSE avg  : {best_val_rmse:.4f}")
 # %%
 K_ENSEMBLE = 15
 
-def fit_ensemble(X_tr, Y_tr, params, k=K_ENSEMBLE):
+def fit_ensemble(X_tr, Y_tr, X_val, Y_val, params, k=K_ENSEMBLE):
     models = []
     for seed in range(k):
         m = MLPRegressor(**params, activation="relu", max_iter=2000,
                          random_state=seed, learning_rate_init=1e-3)
         m.fit(X_tr, Y_tr)
         models.append(m)
-    preds    = np.stack([m.predict(X_tr) for m in models], axis=0)   # (K, n, T)
-    noise_var = np.mean((Y_tr - preds.mean(axis=0)) ** 2, axis=0)    # (T,)
+    preds_val = np.stack([m.predict(X_val) for m in models], axis=0)  # (K, n_val, T)
+    noise_var = np.mean((Y_val - preds_val.mean(axis=0)) ** 2, axis=0)  # (T,)
     return models, noise_var
 
 
@@ -99,7 +99,8 @@ def ensemble_predict(models, noise_var, X):
 
 
 print(f"\nFitting deep ensemble (K={K_ENSEMBLE}) on full training set...")
-ensemble_models, noise_var = fit_ensemble(splits["X_train"], splits["Y_train"], best_params)
+ensemble_models, noise_var = fit_ensemble(splits["X_train"], splits["Y_train"],
+                                          splits["X_val"], splits["Y_val"], best_params)
 print("Done.")
 
 # %%
@@ -199,26 +200,21 @@ savefig("06b_model_comparison_bar.png")
 # ## Low-Data Regime: NN vs GP Models
 
 # %%
-TRAIN_SIZES = [20, 40, 80, 160, 320, splits["n_train"]]
+TRAIN_SIZES = [20, 40, 80, 160]
 N_SEEDS     = 5
 
-LCM_MAX_N = 200
-
-def make_model_configs(n):
-    configs = {
-        "Independent GP": lambda: IndependentGP(ARD=True,  n_restarts=2),
-        "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
-    }
-    if n <= LCM_MAX_N:
-        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
-    return configs
+MODEL_CONFIGS = {
+    "Independent GP": lambda: IndependentGP(ARD=True,  n_restarts=2),
+    "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
+    "LCM (Q=2)":      lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2),
+}
 
 records = defaultdict(lambda: defaultdict(dict))
 
 print("\nRunning low-data ablation (GP models)...")
 for n in TRAIN_SIZES:
     print(f"\n--- n={n} ---")
-    for model_name, model_factory in make_model_configs(n).items():
+    for model_name, model_factory in MODEL_CONFIGS.items():
         seed_metrics = defaultdict(list)
         for seed in range(N_SEEDS):
             sub = subsample_train(splits, n, random_state=seed)
@@ -248,13 +244,13 @@ for n in TRAIN_SIZES:
         sub = subsample_train(splits, n, random_state=seed)
         K = K_ENSEMBLE
         models_s = [
-            MLPRegressor(**best_params, activation="relu", max_iter=500,
+            MLPRegressor(**best_params, activation="relu", max_iter=1000,
                          random_state=seed * 100 + k, learning_rate_init=1e-3).fit(
                 sub["X_train"], sub["Y_train"])
             for k in range(K)
         ]
-        preds_tr = np.stack([m.predict(sub["X_train"]) for m in models_s], axis=0)
-        nv = np.mean((sub["Y_train"] - preds_tr.mean(axis=0)) ** 2, axis=0)
+        preds_val_s = np.stack([m.predict(splits["X_val"]) for m in models_s], axis=0)
+        nv = np.mean((splits["Y_val"] - preds_val_s.mean(axis=0)) ** 2, axis=0)
         mu, var = ensemble_predict(models_s, nv, splits["X_test"])
         for t in range(T):
             seed_metrics[f"Y{t+1} RMSE"].append(rmse(splits["Y_test"][:, t], mu[:, t]))

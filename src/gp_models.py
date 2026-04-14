@@ -165,9 +165,8 @@ class ICM:
         Return the T×T coregionalization matrix B = W W^T + diag(kappa).
         This encodes how strongly the outputs co-vary.
         """
-        # The ICM kernel in GPy stores W and kappa inside the Coregion kern
-        coregion_kern = self.model.kern.ICM0_B  # GPy internal naming
-        return coregion_kern.B
+        cg = self._get_coregion()
+        return cg.B.copy() if cg is not None else None
 
     def _get_coregion(self):
         """Access the GPy Coregion kernel object (for inspecting W, kappa)."""

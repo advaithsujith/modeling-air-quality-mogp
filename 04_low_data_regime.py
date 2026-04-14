@@ -1,7 +1,7 @@
 # %% [markdown]
 # # 04 — Low-Data Regime Ablation Study
 #
-# Sub-sample the training set to sizes {20, 40, 80, 160, 320, full}.
+# Sub-sample the training set to sizes {20, 40, 80, 160}.
 # Repeat with 5 random seeds for error bars. Fixed test set throughout.
 # The question: does the MOGP's cross-output information sharing help when
 # we only have a handful of labelled examples?
@@ -41,19 +41,14 @@ splits = split_and_scale(X, Y, test_size=0.2, val_size=0.1,
 T = splits["Y_test"].shape[1]
 print(f"  Full train size: {splits['n_train']},  Test size: {splits['n_test']}")
 
-TRAIN_SIZES = [20, 40, 80, 160, 320, splits["n_train"]]
+TRAIN_SIZES = [20, 40, 80, 160]
 N_SEEDS = 5
 
-LCM_MAX_N = 200  # LCM is O(n³T³); skip it for large n to keep runtime reasonable
-
-def make_model_configs(n):
-    configs = {
-        "Independent GP": lambda: IndependentGP(ARD=True,  n_restarts=2),
-        "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
-    }
-    if n <= LCM_MAX_N:
-        configs["LCM (Q=2)"] = lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
-    return configs
+MODEL_CONFIGS = {
+    "Independent GP": lambda: IndependentGP(ARD=True,  n_restarts=2),
+    "ICM (Q=1)":      lambda: ICM(W_rank=1,  ARD=True,  n_restarts=2),
+    "LCM (Q=2)":      lambda: LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2),
+}
 
 # %% [markdown]
 # ## Run Experiments
@@ -63,7 +58,7 @@ records = defaultdict(lambda: defaultdict(dict))
 
 for n in TRAIN_SIZES:
     print(f"\n--- n={n} ---")
-    for model_name, model_factory in make_model_configs(n).items():
+    for model_name, model_factory in MODEL_CONFIGS.items():
         seed_metrics = defaultdict(list)   # key: "Y{t+1} RMSE/NLPD", value: list
 
         for seed in range(N_SEEDS):

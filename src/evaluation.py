@@ -144,4 +144,4 @@ def default_reference_point(Y: np.ndarray, slack: float = 0.1) -> np.ndarray:
     on each objective. Works correctly for both positive and negative Y values.
     """
     worst = Y.max(axis=0)
-    return worst + np.abs(worst) * slack
+    return worst + np.maximum(np.abs(worst), 1.0) * slack
