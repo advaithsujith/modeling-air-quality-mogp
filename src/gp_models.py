@@ -161,7 +161,7 @@ class IndependentGP:
                 optimizer.zero_grad()
                 with gpytorch.settings.fast_computations():
                     out  = model(X_t)
-                    loss = -mll(out, Y_t)
+                    loss = -mll(out, Y_t).sum()  # batched MLL gives (T,) -> scalar
                 loss.backward()
                 optimizer.step()
 
