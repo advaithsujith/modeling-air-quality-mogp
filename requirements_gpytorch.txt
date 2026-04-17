@@ -1,0 +1,16 @@
+# GPyTorch branch requirements
+# Install on CSF3:
+#   pip install torch==2.3.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+#   pip install gpytorch==1.12 linear_operator==0.5.0
+#   pip install numpy pandas scikit-learn matplotlib seaborn scipy requests
+
+torch==2.3.1+cu121
+gpytorch==1.12
+linear_operator==0.5.0
+numpy>=1.24,<2.0
+pandas>=2.0
+scikit-learn>=1.3
+matplotlib>=3.7
+seaborn>=0.13
+scipy>=1.11
+requests

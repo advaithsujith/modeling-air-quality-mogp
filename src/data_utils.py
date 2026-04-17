@@ -64,7 +64,7 @@ OUTPUT_NAMES = [
 SHORT_OUTPUT_NAMES = ["CO", "C6H6", "NOx", "NO2"]
 
 # Subsampling cap for GP training (kept low due to O(n³) cost with T=4 outputs)
-GP_SUBSAMPLE = 500
+GP_SUBSAMPLE = None
 
 
 # ---------------------------------------------------------------------------
