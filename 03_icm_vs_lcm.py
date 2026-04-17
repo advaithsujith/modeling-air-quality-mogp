@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from data_utils import (
-    get_Xy, split_and_scale,
+    get_Xy, split_and_scale, unscale_predictions,
     OUTPUT_NAMES, SHORT_OUTPUT_NAMES, SHORT_FEATURE_NAMES, GP_SUBSAMPLE,
 )
 from gp_models import ICM, LCM, IndependentGP
@@ -58,7 +58,8 @@ icm = ICM(W_rank=1, ARD=True, n_restarts=2)
 icm.fit(splits["X_train"], splits["Y_train"])
 print(f"  ICM NLML : {icm.nlml:.2f}")
 
-mu_icm, var_icm = icm.predict(splits["X_test"])
+mu_icm_scaled, var_icm_scaled = icm.predict(splits["X_test"])
+mu_icm, var_icm = unscale_predictions(mu_icm_scaled, var_icm_scaled, splits["scaler_Y"])
 all_results["ICM (Q=1)"] = {}
 for t in range(T):
     all_results["ICM (Q=1)"][f"Y{t+1} RMSE"] = rmse(splits["Y_test"][:, t], mu_icm[:, t])
@@ -74,7 +75,8 @@ lcm = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
 lcm.fit(splits["X_train"], splits["Y_train"])
 print(f"  LCM (Q=2) NLML : {lcm.nlml:.2f}")
 
-mu_lcm, var_lcm = lcm.predict(splits["X_test"])
+mu_lcm_scaled, var_lcm_scaled = lcm.predict(splits["X_test"])
+mu_lcm, var_lcm = unscale_predictions(mu_lcm_scaled, var_lcm_scaled, splits["scaler_Y"])
 all_results["LCM (Q=2)"] = {}
 for t in range(T):
     all_results["LCM (Q=2)"][f"Y{t+1} RMSE"] = rmse(splits["Y_test"][:, t], mu_lcm[:, t])

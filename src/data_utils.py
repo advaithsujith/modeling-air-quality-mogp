@@ -262,12 +262,42 @@ def split_and_scale(
     X_val   = scaler_X.transform(X_val)
     X_test  = scaler_X.transform(X_test)
 
+    # Standardize Y using training statistics. Y_test is kept in original units
+    # so that RMSE/NLPD can be reported in physical units after un-standardizing
+    # model predictions with unscale_predictions().
+    scaler_Y = StandardScaler()
+    Y_train = scaler_Y.fit_transform(Y_train)
+    Y_val   = scaler_Y.transform(Y_val)
+    Y_test_orig = Y_test.copy()   # original units, used for final evaluation
+
     return dict(
         X_train=X_train, X_val=X_val, X_test=X_test,
-        Y_train=Y_train, Y_val=Y_val, Y_test=Y_test,
-        scaler_X=scaler_X,
+        Y_train=Y_train, Y_val=Y_val, Y_test=Y_test_orig,
+        scaler_X=scaler_X, scaler_Y=scaler_Y,
         n_train=len(X_train), n_val=len(X_val), n_test=len(X_test),
     )
+
+
+def unscale_predictions(mu: np.ndarray, var: np.ndarray, scaler_Y) -> tuple:
+    """
+    Convert GP/NN predictions from standardized Y space back to original units.
+
+    Parameters
+    ----------
+    mu      : (n, T) predictive means in standardized space
+    var     : (n, T) predictive variances in standardized space
+    scaler_Y: fitted StandardScaler used for Y
+
+    Returns
+    -------
+    mu_orig  : (n, T) means in original units
+    var_orig : (n, T) variances in original units
+    """
+    s = scaler_Y.scale_    # (T,)
+    m = scaler_Y.mean_     # (T,)
+    mu_orig  = mu * s + m
+    var_orig = var * s ** 2
+    return mu_orig, var_orig
 
 
 def subsample_train(splits: dict, n: int, random_state: int = 0) -> dict:

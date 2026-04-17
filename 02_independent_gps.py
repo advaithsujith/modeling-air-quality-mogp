@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from data_utils import (
-    load_raw, get_Xy, split_and_scale,
+    load_raw, get_Xy, split_and_scale, unscale_predictions,
     FEATURE_NAMES, SHORT_FEATURE_NAMES, OUTPUT_NAMES, SHORT_OUTPUT_NAMES,
     GP_SUBSAMPLE,
 )
@@ -55,7 +55,8 @@ print(f"  Combined NLML : {igp.nlml:.2f}")
 # ## Test-Set Evaluation
 
 # %%
-mu_test, var_test = igp.predict(splits["X_test"])
+mu_test_scaled, var_test_scaled = igp.predict(splits["X_test"])
+mu_test, var_test = unscale_predictions(mu_test_scaled, var_test_scaled, splits["scaler_Y"])
 T = splits["Y_test"].shape[1]
 
 results = {"Independent GP": {}}

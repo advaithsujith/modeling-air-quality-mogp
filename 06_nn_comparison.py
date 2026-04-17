@@ -22,7 +22,7 @@ from collections import defaultdict
 warnings.filterwarnings("ignore")
 
 from data_utils import (
-    get_Xy, split_and_scale, subsample_train,
+    get_Xy, split_and_scale, subsample_train, unscale_predictions,
     OUTPUT_NAMES, SHORT_OUTPUT_NAMES, GP_SUBSAMPLE,
 )
 from gp_models import IndependentGP, ICM, LCM
@@ -104,7 +104,8 @@ ensemble_models, noise_var = fit_ensemble(splits["X_train"], splits["Y_train"],
 print("Done.")
 
 # %%
-mu_test, var_test = ensemble_predict(ensemble_models, noise_var, splits["X_test"])
+mu_test_s, var_test_s = ensemble_predict(ensemble_models, noise_var, splits["X_test"])
+mu_test, var_test = unscale_predictions(mu_test_s, var_test_s, splits["scaler_Y"])
 
 nn_results = {}
 for t in range(T):
@@ -221,7 +222,8 @@ for n in TRAIN_SIZES:
             try:
                 m = model_factory()
                 m.fit(sub["X_train"], sub["Y_train"])
-                mu, var = m.predict(splits["X_test"])
+                mu_s, var_s = m.predict(splits["X_test"])
+                mu, var = unscale_predictions(mu_s, var_s, splits["scaler_Y"])
                 for t in range(T):
                     seed_metrics[f"Y{t+1} RMSE"].append(rmse(splits["Y_test"][:, t], mu[:, t]))
                     seed_metrics[f"Y{t+1} NLPD"].append(nlpd(splits["Y_test"][:, t], mu[:, t], var[:, t]))
@@ -251,7 +253,8 @@ for n in TRAIN_SIZES:
         ]
         preds_val_s = np.stack([m.predict(splits["X_val"]) for m in models_s], axis=0)
         nv = np.mean((splits["Y_val"] - preds_val_s.mean(axis=0)) ** 2, axis=0)
-        mu, var = ensemble_predict(models_s, nv, splits["X_test"])
+        mu_s, var_s = ensemble_predict(models_s, nv, splits["X_test"])
+        mu, var = unscale_predictions(mu_s, var_s, splits["scaler_Y"])
         for t in range(T):
             seed_metrics[f"Y{t+1} RMSE"].append(rmse(splits["Y_test"][:, t], mu[:, t]))
             seed_metrics[f"Y{t+1} NLPD"].append(nlpd(splits["Y_test"][:, t], mu[:, t], var[:, t]))

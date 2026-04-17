@@ -19,7 +19,7 @@ from collections import defaultdict
 warnings.filterwarnings("ignore")
 
 from data_utils import (
-    get_Xy, split_and_scale, subsample_train,
+    get_Xy, split_and_scale, subsample_train, unscale_predictions,
     OUTPUT_NAMES, SHORT_OUTPUT_NAMES, GP_SUBSAMPLE,
 )
 from gp_models import IndependentGP, ICM, LCM
@@ -66,7 +66,8 @@ for n in TRAIN_SIZES:
             try:
                 m = model_factory()
                 m.fit(sub["X_train"], sub["Y_train"])
-                mu, var = m.predict(splits["X_test"])
+                mu_s, var_s = m.predict(splits["X_test"])
+                mu, var = unscale_predictions(mu_s, var_s, splits["scaler_Y"])
                 for t in range(T):
                     seed_metrics[f"Y{t+1} RMSE"].append(
                         rmse(splits["Y_test"][:, t], mu[:, t]))
@@ -203,8 +204,10 @@ igp40.fit(sub40["X_train"], sub40["Y_train"])
 lcm40 = LCM(num_latents=2, W_rank=1, ARD=True, n_restarts=2)
 lcm40.fit(sub40["X_train"], sub40["Y_train"])
 
-mu_igp40, var_igp40 = igp40.predict(splits["X_test"])
-mu_lcm40, var_lcm40 = lcm40.predict(splits["X_test"])
+mu_igp40_s, var_igp40_s = igp40.predict(splits["X_test"])
+mu_igp40, var_igp40 = unscale_predictions(mu_igp40_s, var_igp40_s, splits["scaler_Y"])
+mu_lcm40_s, var_lcm40_s = lcm40.predict(splits["X_test"])
+mu_lcm40, var_lcm40 = unscale_predictions(mu_lcm40_s, var_lcm40_s, splits["scaler_Y"])
 
 from evaluation import rmse as _rmse
 

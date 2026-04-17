@@ -137,7 +137,8 @@ class IndependentGP:
         Y_t = _to_tensor(Y_train.T)          # (T, n)
 
         likelihood = gpytorch.likelihoods.GaussianLikelihood(
-            batch_shape=torch.Size([T])
+            batch_shape=torch.Size([T]),
+            noise_constraint=gpytorch.constraints.GreaterThan(1e-3),
         ).to(_DEVICE)
         model = _BatchedExactGP(X_t, Y_t, likelihood, d, T).to(_DEVICE)
         mll   = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
@@ -259,7 +260,8 @@ class ICM:
         Y_t = _to_tensor(Y_train)   # (n, T)
 
         likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
-            num_tasks=T
+            num_tasks=T,
+            noise_constraint=gpytorch.constraints.GreaterThan(1e-3),
         ).to(_DEVICE)
         model = _MultitaskExactGP(X_t, Y_t, likelihood, d, T, self.W_rank).to(_DEVICE)
         mll   = gpytorch.mlls.ExactMarginalLogLikelihood(likelihood, model)
@@ -445,7 +447,8 @@ class LCM:
         inducing_pts = self._init_inducing(X_train)   # (Q, m, d)
 
         likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(
-            num_tasks=T
+            num_tasks=T,
+            noise_constraint=gpytorch.constraints.GreaterThan(1e-3),
         ).to(_DEVICE)
         model = _LMCApproximateGP(inducing_pts, d, T, self.num_latents).to(_DEVICE)
         mll   = gpytorch.mlls.VariationalELBO(likelihood, model, num_data=n)
