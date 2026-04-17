@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Data utilities for the UCI Air Quality dataset (UCI ML Repository #360).
 
