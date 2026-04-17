@@ -5,8 +5,8 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=64G
 #SBATCH --time=12:00:00
-#SBATCH --output=mogp_out_%j.txt
-#SBATCH --error=mogp_err_%j.txt
+#SBATCH --output=mogp_out.txt
+#SBATCH --error=mogp_err.txt
 
 # -----------------------------------------------------------------------
 # Environment setup
