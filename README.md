@@ -1,10 +1,12 @@
 # Modeling Air Quality with Multi-Output Gaussian Processes
 
-This project investigates whether Multi-Output Gaussian Processes (MOGPs) can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy, so can I get more information out of fewer measurements by exploiting the fact that pollutants are correlated?
+This project investigates whether Multi-Output Gaussian Processes (MOGPs) can outperform independent models on urban air quality prediction, and whether they can guide efficient data collection through Bayesian optimization. The central question is practical: reference-grade air quality analysers are expensive to deploy, so can exploiting inter-pollutant correlations extract more information from fewer measurements?
 
-I use the UCI Air Quality dataset (De Vito et al., 2008): hourly readings from an Italian city between March 2004 and February 2005, comprising 5 metal-oxide sensor channels, 3 meteorological variables, and 4 reference analyser outputs (CO, Benzene/C6H6, NOx, NO2). After cleaning, ~6000 usable rows remain. GP inference scales as O(n³), so GP models are trained on a random subsample of 500 rows (split roughly 350 train / 50 val / 100 test); the neural network and Bayesian optimisation experiments use the same splits for consistency.
+I use the UCI Air Quality dataset (De Vito et al., 2008): hourly readings from an Italian city between March 2004 and February 2005, comprising 5 metal-oxide sensor channels, 3 meteorological variables, and 4 reference analyser outputs (CO, Benzene/C6H6, NOx, NO2). After cleaning, 6,941 usable rows remain. This run uses the full dataset (4,858 train / 694 val / 1,389 test), with GP inference accelerated on an A100 GPU via the CSF3 HPC cluster.
 
-I compare three GP model families: independent GPs, ICM (Intrinsic Coregionalization Model), and LCM (Linear Coregionalization Model, Q=2 latents), along with a deep ensemble of MLPs as a non-GP baseline.
+I compare three GP model families: independent GPs (one ARD-RBF GP per output), ICM (Intrinsic Coregionalization Model, Q=1 latent), and LCM (Linear Coregionalization Model, Q=2 latents with ARD), along with a deep ensemble of MLPs as a non-GP baseline.
+
+**Main findings (full data):** Contrary to the theoretical promise of coregionalization, independent GPs outperform both ICM and LCM on all four outputs by RMSE at this data scale. With 4,858 training points each GP has sufficient data to learn the input space efficiently without borrowing strength across outputs. The coregionalization overhead — additional parameters, a harder optimization landscape — is not compensated by cross-output information at this scale. However, MOGPs do provide a calibration advantage in the low-data regime (n=20), and GP-based acquisition functions (both independent and LCM variants) dramatically outperform random search in the Bayesian optimization experiment.
 
 ---
 
@@ -12,13 +14,11 @@ I compare three GP model families: independent GPs, ICM (Intrinsic Coregionaliza
 
 ### Missing Data
 
-The first thing I address is missingness. The dataset uses -200 as a sentinel for missing values, which I replace with NaN before any modelling.
+The dataset uses -200 as a sentinel for missing values. NMHC(GT) is >90% missing and is dropped entirely. The four reference analyser outputs (CO, C6H6, NOx, NO2) each have 15–20% missingness; rows with any missing target are dropped, bringing the full dataset from 9,358 to 6,941 rows. Sensor and meteorological columns have <10% missingness and are median-imputed using training-set statistics only, after the train/test split, to prevent data leakage. The asymmetry is noteworthy: the expensive reference analysers are more often offline than the cheap metal-oxide sensors.
 
 <p align="center">
   <img src="outputs/01a_missing_data.png" width="750"/>
 </p>
-
-NMHC(GT) is >90% missing and I drop it entirely; no imputation strategy can recover a column with that little signal. The four reference analyser outputs (CO, NOx, NO2, and to a lesser extent C6H6) each have 15-20% missingness, but since I drop any row where *any* target is missing, the effective dataset shrinks further. Sensor columns and meteorological variables have <10% missing and I median-impute them using training-set medians only (imputation is deferred to after the train/test split to avoid data leakage). This asymmetry matters: the reference analysers (expensive) are more often offline than the cheap metal-oxide sensors.
 
 ### Output Distributions
 
@@ -26,7 +26,7 @@ NMHC(GT) is >90% missing and I drop it entirely; no imputation strategy can reco
   <img src="outputs/01b_output_distributions.png" width="800"/>
 </p>
 
-All four outputs are right-skewed with heavy tails, a pattern typical of pollutant concentrations. CO has a median of ~1.5 mg/m3 with occasional spikes above 8; C6H6 is tightly clustered near 6 ug/m3 with a long tail; NOx has a median around 166 ppb but extends past 1000 ppb during high-traffic events; NO2 is the most Gaussian-looking of the four with a median around 110 ug/m3. The scale differences across outputs (from single-digit CO to triple-digit NOx) matter when interpreting the coregionalization matrices later.
+All four outputs are right-skewed with heavy tails, typical of pollutant concentration data. CO has a median of roughly 1.5 mg/m³ with occasional spikes above 8; C6H6 is tightly clustered near 6 µg/m³ with a long tail; NOx has a median around 166 ppb but extends past 1,000 ppb during high-traffic events; NO2 is the most Gaussian-looking with a median around 110 µg/m³. The substantial scale differences across outputs — from single-digit CO to triple-digit NOx — directly influence how coregionalization matrices get weighted during optimization, a point returned to in Section 3.
 
 ### Output Correlations
 
@@ -34,13 +34,13 @@ All four outputs are right-skewed with heavy tails, a pattern typical of polluta
   <img src="outputs/01c_output_correlation.png" width="420"/>
 </p>
 
-This is the key validation for using a MOGP. Everything, especially CO and C6H6, are pretty positively correlated (MOGPs perform better on positive correlations) (r=0.930). Both are direct combustion products that peak together during traffic rush hours. CO-NOx (r=0.786) and C6H6-NOx (r=0.718) are also strong. NO2 is the weakest correlate (r=0.674 with CO, 0.603 with C6H6), which makes sense: NO2 involves secondary photochemical reactions and has a different diurnal cycle than the primary combustion pollutants. All off-diagonal correlations are positive and substantial, which is exactly what I need for coregionalization to be beneficial.
+The inter-pollutant correlations are the core justification for attempting a MOGP. All off-diagonal correlations are positive and substantial: CO–C6H6 (r=0.930), CO–NOx (r=0.786), C6H6–NOx (r=0.718), NOx–NO2 (r=0.743), NO2–CO (r=0.674), NO2–C6H6 (r=0.603). The CO–C6H6 coupling is particularly strong; both are direct combustion products that peak simultaneously during traffic events. NO2 is the weakest correlate of the group because it involves secondary photochemical formation and has a distinct diurnal cycle. MOGPs are theoretically most beneficial when outputs are positively correlated, so these numbers validate the premise — at least in principle.
 
 <p align="center">
   <img src="outputs/01f_output_pairplot.png" width="650"/>
 </p>
 
-The pairplot confirms these are not just linear relationships; the joint densities show clear elongated structures, especially between CO, C6H6 and NOx. There is also visible heteroscedasticity: variance grows with the mean for most pairs, which motivates GP models that can capture this.
+The pairplot confirms the correlations are not purely linear. The CO–C6H6 and CO–NOx joint densities show elongated, slightly curved structures, and there is visible heteroscedasticity: variance grows with the mean for most pairs. This is the kind of structure that a kernel-based model can capture through learned lengthscales.
 
 ### Temporal Structure
 
@@ -48,7 +48,7 @@ The pairplot confirms these are not just linear relationships; the joint densiti
   <img src="outputs/01d_temporal_patterns.png" width="800"/>
 </p>
 
-The hourly profiles are informative. CO and NOx show classic double-peak patterns: morning rush (7-9am) and evening peak (6-8pm), with a midday dip as atmospheric mixing disperses pollutants. C6H6 follows CO very closely. NO2, by contrast, rises through the day and peaks in the evening, reflecting its dependence on photochemical reactions and secondary formation from NOx. Seasonally, CO and NOx are elevated in winter (Jan, Feb, Nov, Dec), consistent with heating emissions and reduced atmospheric boundary layer height. NO2 is more flat across months. These patterns motivated me to add cyclic hour features (sin/cos encoding of hour of day) rather than raw hour integers, which would create a 23 to 0 discontinuity.
+The hourly profiles are physically informative. CO and NOx show classic double-peak patterns: morning rush (7–9 am) and evening peak (6–8 pm), with a midday dip as atmospheric mixing disperses surface-level pollutants. C6H6 follows CO almost exactly. NO2 rises through the day and peaks in the late evening, reflecting its dependence on photochemical reactions and secondary formation from NOx oxidation. Seasonally, CO and NOx are elevated in winter (November to February), consistent with heating emissions and a reduced atmospheric boundary layer height. These patterns motivated cyclic hour encoding (sin/cos of hour-of-day) rather than raw integer hour, which would impose a spurious 23→0 discontinuity on the kernel.
 
 ### Feature Importance
 
@@ -56,13 +56,13 @@ The hourly profiles are informative. CO and NOx show classic double-peak pattern
   <img src="outputs/01e_feature_output_correlation.png" width="500"/>
 </p>
 
-The sensor columns dominate. S1(CO) is strongly correlated with CO (r=0.88) and C6H6 (r=0.91); the metal-oxide CO sensor tracks both combustion pollutants well. S2(NMHC) shows similar behaviour. Meteorological variables (T, RH, AH) have weak correlations with all outputs, though temperature has a modest negative relationship with NOx and NO2, consistent with photochemistry being more active in warmer conditions. The cyclic hour features (sin/cos) show moderate correlations, confirming that time of day carries predictive signal beyond what the sensors capture.
+The metal-oxide sensor columns dominate. S1(CO) is strongly correlated with CO (r≈0.88) and C6H6 (r≈0.91). S2(NMHC) shows similar behaviour. Meteorological variables have weak correlations with all outputs: temperature has a modest negative relationship with NOx and NO2, consistent with greater photochemical activity in warmer conditions, but RH and AH are nearly orthogonal to the pollutant concentrations. The cyclic hour features show moderate correlations, confirming time-of-day carries predictive signal beyond the sensor readings alone.
 
 ---
 
 ## 2. Baseline: Independent GPs
 
-Before introducing any cross-output structure, I fit one ARD-RBF GP independently to each output. This is a strong baseline: it can learn feature-specific lengthscales per output and model uncertainty, but treats the four pollutants as if they are completely unrelated.
+Before introducing any cross-output structure, I fit one ARD-RBF GP independently to each output using GPyTorch, with 3 random restarts to avoid local optima in hyperparameter optimization. This is a strong baseline: it learns feature-specific lengthscales per output and produces calibrated uncertainty estimates, but treats the four pollutants as entirely unrelated.
 
 <p align="center">
   <img src="outputs/02a_igp_predictions.png" width="800"/>
@@ -72,7 +72,16 @@ Before introducing any cross-output structure, I fit one ARD-RBF GP independentl
   <img src="outputs/02b_igp_parity.png" width="800"/>
 </p>
 
-**Results:** C6H6 is predicted almost perfectly (RMSE=0.031, R²≈1.00); its tight distribution and strong sensor correlation make it an easy target. CO achieves RMSE=0.419. NOx has high absolute RMSE (79.6 ppb) because of its wide dynamic range (values span 0 to 1200 ppb) but the relative fit is reasonable (R²≈0.90). NO2 is the most challenging output (RMSE=23.8 ug/m3, R²≈0.70); its secondary photochemical nature means sensor readings are a noisier proxy.
+**Test-set results:**
+
+| Output | RMSE | NLPD |
+|--------|------|------|
+| CO (mg/m³) | 0.371 | 0.469 |
+| C6H6 (µg/m³) | 0.032 | -0.508 |
+| NOx (ppb) | 51.85 | 5.308 |
+| NO2 (µg/m³) | 15.76 | 4.258 |
+
+C6H6 is predicted almost perfectly (RMSE=0.032, NLPD=-0.508); its tight, well-clustered distribution and strong sensor correlation make it a tractable target even for a simple kernel. CO achieves RMSE=0.371. NOx has a high absolute RMSE (51.85 ppb), but this must be read against its dynamic range — values span from near-zero to over 1,000 ppb, and the relative fit is reasonable. NO2 is the most challenging output: its secondary photochemical nature means sensor readings are a noisier proxy, and the model's uncertainty is correspondingly wider (NLPD=4.258).
 
 ### ARD Lengthscales
 
@@ -80,19 +89,43 @@ Before introducing any cross-output structure, I fit one ARD-RBF GP independentl
   <img src="outputs/02c_ard_lengthscales.png" width="750"/>
 </p>
 
-The ARD lengthscales reveal which features each GP relies on. Relative humidity (RH) has an extremely large lengthscale for all outputs; the model essentially ignores it, treating the output as flat with respect to RH. This is consistent with RH having near-zero Pearson correlations with the pollutants. Temperature (T) has smaller lengthscales, confirming its modest relevance. The sensor columns generally have moderate lengthscales. The absolute values (tens of thousands) reflect the standardised input space; what matters is the relative ordering across features, not the magnitude.
+The learned ARD lengthscales serve as feature importance indicators. Relative humidity (RH) receives an extremely large lengthscale for all outputs — the model effectively ignores it, consistent with its near-zero Pearson correlations. Temperature (T) has smaller lengthscales across all outputs, confirming its modest relevance. Sensor columns show moderate lengthscales, with variation across outputs reflecting each pollutant's particular sensor dependencies. The absolute values (in the tens of thousands) reflect the standardised input space; the informative quantity is the relative ordering across features within each output, not the magnitude.
 
 ---
 
 ## 3. Multi-Output GPs: ICM and LCM
 
-### Model Comparison
+### Full-Data Performance: A Negative Result
 
 <p align="center">
   <img src="outputs/03a_model_comparison.png" width="850"/>
 </p>
 
-ICM outperforms the independent GP baseline on three of four outputs by RMSE: CO (0.385 vs 0.419), NOx (69.5 vs 79.6), NO2 (20.9 vs 23.8). With ARD lengthscales enabled, LCM (Q=2) is strongly competitive across the board: CO (0.388), NOx (75.3 vs 79.6 for independent GP), and NO2 (21.2 vs 23.8), while only losing ground on C6H6 (0.157 vs 0.031). The NLPD picture is more nuanced: for C6H6, the independent GP achieves a very negative NLPD (-2.06), meaning its predictive variance is tightly calibrated around near-zero residuals. ICM's NLPD on C6H6 (0.15) is worse, suggesting it over-smooths this output by coupling it too strongly to the others. LCM's C6H6 NLPD (0.64) reflects the same trade-off; the two-latent structure improves NOx (5.60 vs 5.88) and CO (0.42 vs 0.55) calibration at the cost of slightly worse C6H6 calibration.
+At full data (4,858 training points), both coregionalization models perform worse than the independent GP baseline across all four outputs by RMSE. This is the central and perhaps surprising finding of this experiment:
+
+**RMSE:**
+
+| Model | CO | C6H6 | NOx | NO2 |
+|-------|-----|-------|-----|-----|
+| Independent GP | **0.371** | **0.032** | **51.85** | **15.76** |
+| ICM (Q=1) | 0.444 | 0.085 | 55.68 | 18.37 |
+| LCM (Q=2) | 0.453 | 0.068 | 54.03 | 29.98 |
+
+**NLPD:**
+
+| Model | CO | C6H6 | NOx | NO2 |
+|-------|-----|-------|-----|-----|
+| Independent GP | **0.469** | **-0.508** | **5.308** | **4.258** |
+| ICM (Q=1) | 3.381 | 2.554 | 8.759 | 7.363 |
+| LCM (Q=2) | 0.628 | -0.072 | 5.365 | 4.818 |
+
+The ICM results are particularly poor in calibration terms. NLPD of 3.38 for CO and 2.55 for C6H6 indicate that the model assigns near-zero probability density to the true values — the predictive variance is systematically miscalibrated. LCM is considerably better on NLPD but still substantially worse than the independent GP, and its NO2 RMSE (29.98 vs 15.76) represents a dramatic regression.
+
+### Why Coregionalization Fails Here
+
+The result is interpretable. With 4,858 training points per output, each independent GP can learn the input manifold thoroughly without needing borrowed strength from correlated outputs. At this data scale, the inter-output correlations represent no information that cannot be recovered from within-output data alone.
+
+Meanwhile, coregionalization introduces genuine costs: more parameters (ICM adds a full Q×T² coregionalization matrix; LCM with ARD adds Q×D per-latent lengthscales), a harder non-convex optimization landscape, and — critically — the marginal likelihood landscape has many more local optima. At 4,858 points, GP hyperparameter optimization is already expensive, and the coregionalization parameters are harder to set accurately than per-output lengthscales. The result is that the optimizer finds poor local minima, particularly for ICM.
 
 ### The ICM Coregionalization Matrix
 
@@ -100,7 +133,17 @@ ICM outperforms the independent GP baseline on three of four outputs by RMSE: CO
   <img src="outputs/03b_icm_coregionalization.png" width="480"/>
 </p>
 
-The learned B matrix is dominated by the NOx-NOx diagonal entry (3604.06) and the NOx-NO2 cross-term (404.71). CO and C6H6 have near-zero entries. This is not a failure of the model; it is a direct consequence of the raw output units. NOx values range into the hundreds of ppb, while CO is in the single-digit mg/m3 range. The marginal likelihood naturally weights outputs by their variance, so the model allocates most of the shared latent process to the highest-variance output (NOx). In practice, this means the ICM is learning a strong NOx-NO2 coupling (physically sensible, as NO2 is formed partly from NOx oxidation) while largely treating CO and C6H6 independently, which explains why ICM improves mostly on NOx and NO2.
+The learned B matrix reveals the mechanism of failure. The NOx–NOx entry dominates (3604.06) and the NOx–NO2 cross-term is large (404.71), while CO and C6H6 entries are near zero across the board:
+
+```
+        CO      C6H6    NOx       NO2
+CO      0.01    0.01     3.26      0.01
+C6H6    0.01    0.01     0.01      0.01
+NOx     3.26    0.01  3604.06   404.71
+NO2     0.01    0.01   404.71    43.36
+```
+
+This is not a random pathology — it is a direct consequence of raw output units. NOx values span hundreds of ppb while CO is in single-digit mg/m³. The marginal likelihood weights outputs by their variance during optimization, so the shared latent process is allocated almost entirely to the highest-variance output (NOx). In effect, the ICM becomes a strong NOx predictor and a poor predictor of everything else. The NOx–NO2 coupling it does learn is physically sensible (NO2 is partly formed by NOx oxidation), but the total structure is dominated by this single scale imbalance. Pre-standardizing outputs before fitting would partially address this, but it would also change the marginal likelihood landscape and the physical interpretability of B.
 
 ### The LCM Mixing Matrix
 
@@ -108,27 +151,27 @@ The learned B matrix is dominated by the NOx-NOx diagonal entry (3604.06) and th
   <img src="outputs/03c_lcm_mixing_and_lengthscales.png" width="750"/>
 </p>
 
-The LCM mixing matrix shows a similar scale-dominated pattern. Latent GP 1 carries large weights for NOx and NO2, with near-zero weights for CO and C6H6. Latent GP 2 has smaller weights across all outputs. The ARD lengthscale plot (first dimension of each latent's per-feature lengthscales) shows that the two latents have specialised differently, each learning its own feature relevance. This reflects how the two latent processes partition the input space to capture complementary aspects of the pollution dynamics.
+The LCM mixing weights show the same pattern. Latent GP 1 carries large weights for NOx (6.42) and NO2 (2.14), with near-zero weights for CO and C6H6. Latent GP 2 has a similar structure (NOx: 3.84, NO2: 1.76), adding a second latent process that recapitulates the same NOx-dominated structure rather than capturing the CO–C6H6 co-variation. The two latents have specialised differently in their ARD lengthscales, suggesting they partition the input space, but neither latent provides meaningful coupling to CO or C6H6. This is why LCM improves only marginally over ICM on some outputs while degrading badly on NO2.
 
-### Parity Comparison and Model Evidence
-
-<p align="center">
-  <img src="outputs/03d_parity_comparison.png" width="850"/>
-</p>
-
-ICM achieves better R² than the independent GP on CO and NO2, the two outputs that benefit most from the NOx-NO2 coupling learned in B. With ARD enabled, LCM now matches or exceeds ICM on NOx and NO2 (RMSE 75.3 and 21.2 respectively), while ICM still holds the edge on raw NOx accuracy (RMSE 69.5). The two-latent structure redistributes predictive power differently across outputs: LCM is more balanced whereas ICM concentrates gains on the highest-variance outputs.
+### Model Evidence
 
 <p align="center">
   <img src="outputs/03e_nlml_comparison.png" width="480"/>
 </p>
 
-A notable result: the independent GP achieves the lowest NLML, followed by LCM and ICM. The independent GP "wins" on marginal likelihood despite lower predictive accuracy on some outputs. This is because the coregionalization models have substantially more parameters (LCM with ARD carries per-latent per-dimension lengthscales), and the marginal likelihood applies an automatic Occam's razor, penalising model complexity. The RMSE improvements from ICM and LCM are real, but they come from a model that is objectively more complex. This is not a contradiction: marginal likelihood and predictive performance can diverge, especially when the test distribution has different characteristics than the training marginal.
+The negative log marginal likelihood (NLML) confirms the Occam's razor interpretation. The independent GP achieves the lowest NLML (1246.5), followed by ICM (1247.8) and LCM (1248.1). The coregionalization models have substantially more parameters, and the marginal likelihood penalises this complexity automatically. The RMSE degradation from coregionalization is therefore accompanied by worse model evidence — there is no trade-off here, just worse models.
+
+<p align="center">
+  <img src="outputs/03d_parity_comparison.png" width="850"/>
+</p>
+
+The parity plots confirm that ICM and LCM predictions are more scattered around the diagonal for CO and NO2 than the independent GP predictions. For NOx the scatter is comparable. The visual story matches the numbers.
 
 ---
 
 ## 4. Low-Data Regime
 
-The central motivation for MOGPs in settings like this is not just better accuracy at full data, but the ability to extrapolate more reliably when labelled data is scarce. Deploying a reference analyser for a year is expensive; what if you only have 40 measurements?
+The motivation for MOGPs in sparse-data settings is clearer than at full data. Deploying a reference analyser for a year is expensive; what if you only have 40 measurements? The low-data experiments subsample the training set to n ∈ {20, 40, 80, 160} and evaluate over 5 random seeds to estimate variance.
 
 ### RMSE vs Training Size
 
@@ -136,7 +179,7 @@ The central motivation for MOGPs in settings like this is not just better accura
   <img src="outputs/04a_low_data_rmse.png" width="800"/>
 </p>
 
-The picture in the low-data regime is mixed and output-dependent. For C6H6, the independent GP is consistently the best; its tight, well-correlated distribution rewards treating it independently, while ICM is notably poor at n=80 (RMSE over 2x the independent GP) and LCM shows an anomalous improvement at n=80 that does not persist. For NOx, LCM shows a clear optimisation failure at n=80 (RMSE spikes sharply before recovering at n=160), a consequence of fitting 38+ ARD parameters from only 80 points; the optimiser finds a poor local minimum. ICM is competitive for NOx at n=20-40 but degrades heavily for CO at n=160 (RMSE 0.87 vs 0.43 for the independent GP), suggesting its coregionalization structure can actively hurt calibration for specific outputs at certain data sizes. LCM is more stable than ICM overall in the low-data regime. All three models are evaluated at the same training sizes (n=20, 40, 80, 160), so the comparison is on equal footing throughout.
+The picture is output-dependent and does not cleanly favour any single model. For C6H6, the independent GP is best at all training sizes — its tight, well-correlated distribution rewards independent modelling even with very few points. For NOx, LCM shows a sharp spike at n=80 (RMSE more than doubles relative to n=40 before recovering at n=160). This is an optimization failure: the LCM with ARD has over 38 free parameters for Q=2 latents across D=10 features and T=4 outputs; trying to optimize these from 80 points leaves the optimizer in a poor local minimum. ICM is more robust to this pathology (no per-latent ARD) but still degrades badly on CO at n=160, where its coregionalization structure actively hurts that specific output. LCM is more stable than ICM overall across the range.
 
 ### Calibration (NLPD) vs Training Size
 
@@ -144,7 +187,11 @@ The picture in the low-data regime is mixed and output-dependent. For C6H6, the 
   <img src="outputs/04b_low_data_nlpd.png" width="800"/>
 </p>
 
-The calibration picture is more nuanced than the RMSE story and splits clearly by output. For CO, the independent GP is the worst-calibrated model at n=20, with NLPD spiking to roughly 35-40 nats. C6H6 shows a similar but less extreme pattern, with the independent GP reaching around 20-25 nats at n=20. In both cases ICM and LCM stay much lower (CO: ~5-10 nats; C6H6: ~1-3 nats), meaning the cross-output coupling gives the MOGP posterior a more grounded variance estimate when data is scarce. For NOx, the independent GP is stably calibrated throughout while LCM shows the same n=80 spike seen in RMSE. For NO2, LCM is very poorly calibrated at n=20 (NLPD ~11), while ICM and the independent GP are more stable. By n=160, all three models converge to similar NLPD. The takeaway is that calibration performance at small n depends heavily on which output you care about: MOGPs help for CO/C6H6, hurt for NO2 (LCM), and are neutral for NOx. All three models are evaluated at the same training sizes (n=20, 40, 80, 160), so the comparison is on equal footing throughout.
+The calibration picture is where MOGPs show their strongest advantage, and it is output-specific. For CO at n=20, the independent GP NLPD spikes to roughly 35–40 nats — the posterior variance collapses and the model assigns near-zero probability to true values. C6H6 shows a similar but less extreme pattern (20–25 nats at n=20). In both cases, ICM and LCM stay much lower (CO: ~5–10 nats; C6H6: ~1–3 nats), because cross-output coupling provides a regularising effect on the posterior variance when within-output data is scarce.
+
+However, this calibration advantage is not universal. For NO2 at n=20, LCM is poorly calibrated (NLPD ~11), while ICM and the independent GP are more stable. For NOx, the independent GP is stably calibrated throughout while LCM spikes at n=80 as described above. By n=160 all three models converge to similar NLPD values.
+
+The practical takeaway: if you must work with n=20 measurements and your priority is a calibrated uncertainty estimate for CO or C6H6, a MOGP is substantially better than an independent GP. For NOx and NO2, the advantage is absent or negative.
 
 ### Predictive Uncertainty at n=40
 
@@ -152,13 +199,13 @@ The calibration picture is more nuanced than the RMSE story and splits clearly b
   <img src="outputs/04c_uncertainty_n40.png" width="900"/>
 </p>
 
-Both models are trained on the same 40 points and evaluated on the full test set. Test samples are sorted by their true target value (same layout as the full-data plots in section 2), so the shaded ±2σ band should track the black true-value dots to show a well-calibrated model. For C6H6 the independent GP is tighter and more accurate (RMSE 0.195 vs LCM's 0.264 at n=40). For NOx and NO2 the uncertainty bands are wide for both models, reflecting how hard these outputs are to characterise from only 40 points, but the independent GP is more reliable: LCM's NOx uncertainty balloons as its many ARD parameters fail to optimise from such a small sample.
+At n=40, both models are trained on the same 40 points and evaluated on the full test set. Test samples are sorted by true target value, so the ±2σ band should track the true-value dots to indicate calibration. For C6H6, the independent GP is tighter and more accurate (RMSE 0.195 vs LCM's 0.264). For NOx and NO2 the uncertainty bands are wide for both models — 40 points is too few to characterise these outputs well — and the independent GP is more reliable because LCM's many ARD parameters fail to optimise from such a small sample.
 
 ---
 
 ## 5. Bayesian Optimization: Pareto Front Discovery
 
-Beyond prediction, MOGPs can serve as surrogates in active learning loops. The question I pose here: given a pool of unlabelled time points (cheap sensor readings only), can a MOGP surrogate guide the selection of which points to label with the reference analyser, so as to map the CO-NO2 joint extremes as efficiently as possible?
+Beyond prediction, MOGPs serve as surrogates in active learning loops. The experiment here: given a pool of unlabelled time points (cheap sensor readings available, but reference analyser measurements not yet taken), can a GP surrogate guide which points to label so as to efficiently map the joint CO–NO2 extremes?
 
 ### The True Pareto Front
 
@@ -166,26 +213,27 @@ Beyond prediction, MOGPs can serve as surrogates in active learning loops. The q
   <img src="outputs/05d_true_pareto_front.png" width="750"/>
 </p>
 
-The true CO-NO2 Pareto front (maximising both) spans the high-pollution region of the dataset and consists of 10 non-dominated points with total hypervolume 3443.2. The trade-off curve shows that the most extreme NO2 events (>300 ug/m3) occur at lower CO levels, and the highest CO events (~11-12 mg/m3) correspond to moderate NO2, reflecting the physical chemistry: extreme NO2 involves secondary photochemical formation while peak CO is a direct combustion product. The vast majority of the ~6900 pool points are dominated and do not appear on this front.
+The true CO–NO2 Pareto front (maximising both) consists of 10 non-dominated points with total hypervolume 3,443.2. The trade-off curve reveals an interesting physical structure: the most extreme NO2 events (>300 µg/m³) occur at moderate CO levels, while peak CO events (~11–12 mg/m³) correspond to moderate NO2. This reflects different source processes — extreme NO2 involves secondary photochemical formation while peak CO is a direct combustion product — so the two extremes do not coincide. The vast majority of the ~6,900 pool points are dominated.
 
 ### Active Learning Comparison
 
-I compare three strategies, each starting from 30 random initial observations and making 40 sequential selections:
-- **Random search**: select uniformly at random from the pool
-- **Independent GP + Thompson sampling**: fit two independent GPs, draw a posterior sample, find its Pareto front, select from it
-- **LCM + Thompson sampling**: same procedure with a joint MOGP surrogate
+Three strategies, each starting from 30 random initial observations and making 40 sequential selections (Thompson sampling for GP strategies):
+
+- **Random search:** select uniformly at random from the pool
+- **Independent GP + Thompson sampling:** two independent GPs, draw a posterior sample, find its Pareto front, select from it
+- **LCM + Thompson sampling:** joint MOGP surrogate, same acquisition procedure
 
 <p align="center">
   <img src="outputs/05a_hypervolume_trace.png" width="720"/>
 </p>
 
-Random search achieves roughly 39% of the true hypervolume after 70 evaluations; it stumbles onto some non-dominated points by chance but never efficiently targets the high-pollution corner. Both GP strategies are dramatically better, each reaching around 90-93% of the true hypervolume. The two active learning strategies are closely matched; LCM shows faster initial convergence in some runs by exploiting CO-NO2 posterior correlations, but by N=40 the 5-run averages are within error bands of each other. The consistent finding is that any GP-based Thompson sampling is far superior to random search.
+Random search achieves roughly 39% of the true hypervolume after 70 total evaluations. Both GP strategies dramatically outperform it, reaching 90–93% of the true hypervolume. The two GP strategies are closely matched across the 5-run average; LCM shows faster early convergence in some seeds by exploiting the CO–NO2 posterior correlation in its surrogate, but both strategies are within error bands of each other by N=40 additional observations.
 
 <p align="center">
   <img src="outputs/05b_normalised_hv.png" width="720"/>
 </p>
 
-The normalised HV gap closure confirms that both GP strategies converge near 1.0 while random search plateaus far below. LCM and independent GP+TS track closely across the budget, with LCM occasionally pulling ahead in early iterations due to richer posterior correlations. For settings where every evaluation is expensive (e.g., deploying a reference analyser for a day to measure a specific time window), either GP-based strategy provides a clear advantage over random acquisition.
+The normalised gap closure (proportion of the gap between initial HV and true HV that is closed) confirms this: both GP strategies converge near 1.0 while random search plateaus far below. The key practical finding is that any GP-based Thompson sampling is far superior to random acquisition for Pareto front discovery — the specific GP variant (independent vs MOGP) matters much less than the choice to use GP uncertainty at all.
 
 ### Discovered Pareto Fronts
 
@@ -193,19 +241,26 @@ The normalised HV gap closure confirms that both GP strategies converge near 1.0
   <img src="outputs/05c_pareto_fronts.png" width="900"/>
 </p>
 
-The discovered fronts after 70 total evaluations confirm the quantitative story. Random search scatters evaluations across the full pool and produces a sparse, low-quality front. Both GP strategies identify points near the true front (red dashed line), with LCM achieving marginally better coverage of the extreme pollution events.
+After 70 total evaluations, random search produces a sparse, poorly concentrated front. Both GP strategies identify points near the true front (red dashed line), with LCM achieving marginally better coverage of the extreme pollution events.
 
 ---
 
 ## 6. Comparison with Deep Ensemble MLP
 
-I also compare against a deep ensemble of 15 MLPs (architecture selected by grid search on the validation set) as a non-GP baseline with uncertainty estimates. The ensemble variance approximates epistemic uncertainty; residual variance from the training set approximates aleatoric uncertainty.
+A deep ensemble of K=15 MLPs (architecture selected by grid search: best is (128, 64) hidden layers, learning rate 1e-3) provides a non-GP baseline with approximate uncertainty estimates. Ensemble variance approximates epistemic uncertainty; residual variance from the training set approximates aleatoric uncertainty.
 
 <p align="center">
   <img src="outputs/06a_nn_parity.png" width="800"/>
 </p>
 
-The most striking failure is C6H6: the MLP achieves R2=0.990 visually but RMSE=0.777, far worse than the independent GP's 0.031. The C6H6 distribution is highly concentrated near zero with a long right tail; the MLP's predictions are systematically too high across the board, suggesting it cannot handle this distributional shape as well as a GP prior. For CO (R2=0.927) and NOx (R2=0.884), the MLP is respectable. NO2 (R2=0.722) is the weakest, similar to the GP story.
+**Test-set results:**
+
+| Output | RMSE | NLPD |
+|--------|------|------|
+| CO (mg/m³) | 0.343 | 0.358 |
+| C6H6 (µg/m³) | 0.106 | -0.385 |
+| NOx (ppb) | 46.35 | 5.176 |
+| NO2 (µg/m³) | 15.08 | 4.108 |
 
 ### Full-Data Comparison
 
@@ -213,25 +268,27 @@ The most striking failure is C6H6: the MLP achieves R2=0.990 visually but RMSE=0
   <img src="outputs/06b_model_comparison_bar.png" width="900"/>
 </p>
 
-**RMSE at full data:**
+**RMSE at full data (lower is better):**
 
 | Model | CO | C6H6 | NOx | NO2 |
-|---|---|---|---|---|
-| Independent GP | 0.419 | **0.031** | 79.6 | 23.8 |
-| ICM (Q=1) | **0.385** | 0.202 | **69.5** | **20.9** |
-| LCM (Q=2) | 0.388 | 0.157 | 75.3 | 21.2 |
-| Deep Ensemble MLP | 0.423 | 0.777 | 78.8 | 22.4 |
+|-------|-----|-------|-----|-----|
+| Independent GP | 0.371 | **0.032** | 51.85 | 15.76 |
+| ICM (Q=1) | 0.444 | 0.085 | 55.68 | 18.37 |
+| LCM (Q=2) | 0.453 | 0.068 | 54.03 | 29.98 |
+| Deep Ensemble MLP | **0.343** | 0.106 | **46.35** | **15.08** |
 
-**NLPD at full data (lower = better calibration):**
+**NLPD at full data (lower is better):**
 
 | Model | CO | C6H6 | NOx | NO2 |
-|---|---|---|---|---|
-| Independent GP | 0.552 | **-2.061** | 5.878 | 4.597 |
-| ICM (Q=1) | 0.434 | 0.153 | 5.901 | **4.464** |
-| LCM (Q=2) | **0.421** | 0.643 | **5.604** | 4.554 |
-| Deep Ensemble MLP | 0.532 | 1.256 | 5.790 | 4.563 |
+|-------|-----|-------|-----|-----|
+| Independent GP | 0.469 | **-0.508** | 5.308 | 4.258 |
+| ICM (Q=1) | 3.381 | 2.554 | 8.759 | 7.363 |
+| LCM (Q=2) | 0.628 | -0.072 | 5.365 | 4.818 |
+| Deep Ensemble MLP | **0.358** | -0.385 | **5.176** | **4.108** |
 
-After the methodology fixes (K=15 ensemble, ARD-consistent comparison), the MLP's NOx NLPD (5.79) is now comparable to the independent GP (5.88) and ICM (5.90), though still above LCM (5.60). The clearest calibration failures are on C6H6 (NLPD 1.26 vs independent GP's -2.06) and CO (0.53 vs LCM's 0.42), where the ensemble variance poorly captures the tight, skewed distribution. The GP predictive variance has a principled derivation from the kernel and the data; the ensemble variance is an approximation that is most reliable when ensemble members disagree in informative ways, which requires sufficient training data.
+The MLP result is genuinely surprising: it achieves the lowest RMSE on CO, NOx, and NO2, outperforming even the independent GP at this data scale. Its failure on C6H6 (RMSE 0.106 vs 0.032 for the independent GP) is striking. The C6H6 distribution is highly concentrated near zero with a long right tail; the ensemble members appear to overfit to different aspects of this distribution and their mean predictions are systematically biased. A GP prior with an RBF kernel imposes smoothness assumptions that happen to suit this tight, clustered distribution better than an unconstrained neural network.
+
+The NLPD picture reveals the MLP's calibration advantage at full data: it achieves the lowest NLPD on CO (0.358), NOx (5.176), and NO2 (4.108), slightly better than the independent GP. ICM is catastrophically miscalibrated (CO: 3.381, C6H6: 2.554). The GP posterior variance derives directly from the kernel and data; the ensemble variance approximation performs comparably here because the ensemble is large (K=15) and the full training set provides sufficient diversity across members.
 
 ### Low-Data Regime with MLP
 
@@ -239,57 +296,69 @@ After the methodology fixes (K=15 ensemble, ARD-consistent comparison), the MLP'
   <img src="outputs/06c_nn_low_data_rmse.png" width="800"/>
 </p>
 
-At n=20, the MLP is catastrophic on C6H6 (RMSE ~3.6, roughly 13x worse than LCM's ~0.27). The independent GP outperforms all other models for C6H6 at all training sizes, but even it is an order of magnitude better than the MLP here. For CO, MLP is marginally worse than LCM at n=20. Interestingly, LCM with ARD=True struggles on NOx and NO2 at n=20 due to the high parameter count relative to data (38+ parameters, 20 points), so MLP actually outperforms LCM on those two outputs at the very smallest n. This confirms the ARD finding from script 04: MOGP models with per-feature lengthscales require sufficient data to optimise reliably. By n=160, GP models consistently outperform MLP across all outputs. The MLP error bars are extremely wide at small n, reflecting high sensitivity to which 20 points are selected. All four models are evaluated at the same training sizes (n=20, 40, 80, 160), so the comparison is on equal footing throughout.
+At n=20, the MLP is catastrophic on C6H6 (RMSE roughly 18x worse than the independent GP). For CO, it is marginally worse than the best GP variant. Interestingly, the MLP outperforms LCM on NOx and NO2 at n=20, because LCM's many ARD parameters are impossible to optimize from 20 points — the MLP's relatively fewer effective degrees of freedom turn out to be a practical advantage at this extreme. The MLP error bars are extremely wide at small n, reflecting high sensitivity to the specific 20 points selected. By n=160, GP models consistently outperform MLP across all outputs.
 
 <p align="center">
   <img src="outputs/06d_nn_low_data_nlpd.png" width="800"/>
 </p>
 
-The calibration picture at small n reveals an important split. For CO, both the independent GP and the MLP spike to roughly 35-40 nats NLPD at n=20, assigning near-zero probability to true values. For C6H6, the independent GP reaches around 20-25 nats while the MLP stays elevated as well. In both cases ICM and LCM are significantly better calibrated at n=20, benefiting from cross-output information sharing. For C6H6, the MLP NLPD stays high throughout (NLPD ~2 at n=160, versus near-zero for the independent GP), reflecting its inability to model the tight, skewed distribution. For NOx, the MLP is roughly flat across n while LCM shows the n=80 calibration spike. The core weakness of ensemble uncertainty remains: at small n the members have not seen enough data to disagree meaningfully, so the estimated uncertainty is unreliable. GP posterior variance is derived from the kernel and the data, which makes it more principled, but the independent GP variant still collapses at n=20 for CO and C6H6 without the regularising effect of cross-output coupling.
+Calibration at small n reveals the key weakness of ensemble uncertainty. For CO at n=20, both the independent GP and the MLP spike to roughly 35–40 nats NLPD, assigning near-zero probability to true values. For C6H6, the independent GP reaches ~20–25 nats while the MLP stays elevated throughout (NLPD ~2 even at n=160 for C6H6, versus near-zero for the independent GP). ICM and LCM are significantly better calibrated for CO and C6H6 at n=20 (5–10 nats for CO), with the cross-output coupling providing regularisation that the ensemble cannot replicate. The fundamental issue with ensemble uncertainty at small n is that ensemble members have not seen enough data to disagree in informative ways, so variance estimates become unreliable. GP posterior variance is derived from the kernel and the data, which makes it more principled — but as shown, even this can fail (independent GP at n=20 for CO/C6H6) without the regularising effect of cross-output coupling.
 
 ---
 
 ## Summary
 
-| | **Accuracy (RMSE)** | **Calibration (NLPD)** | **Low-data stability** | **BO surrogate** |
+| | **RMSE** | **NLPD** | **Low-data calibration** | **BO surrogate** |
 |---|---|---|---|---|
-| Independent GP | Good; **best on C6H6** | Poor on CO/C6H6 at small n | **Most stable overall** | Moderate |
-| ICM (Q=1) | Best on NOx at small n; poor on CO at n=160 | Moderate | Unstable (CO degrades) | N/A |
-| LCM (Q=2) | Competitive; NOx spike at n=80 | Best on CO/C6H6 at small n; unstable on NO2 | More stable than ICM | **Fastest BO convergence** |
-| Deep Ensemble MLP | Fails on C6H6 | Worst across all | **Worst** | N/A |
+| Independent GP | Best across all outputs at full data | Best on C6H6; poor on CO/C6H6 at n=20 | Collapses at n=20 for CO/C6H6 | Moderate (90–93% HV) |
+| ICM (Q=1) | Worse than Independent GP on all outputs | Catastrophically miscalibrated (CO: 3.38, C6H6: 2.55) | Better than Ind. GP for CO at n=20 | N/A |
+| LCM (Q=2) | Worse than Independent GP on all outputs; NO2 regression severe | Better than ICM; reasonable except NO2/NOx at n=80 | Best for CO/C6H6 at n=20 | **Fastest early convergence** |
+| Deep Ensemble MLP | Best on CO, NOx, NO2; fails on C6H6 | Competitive at full data; catastrophic at n=20 | Worst at n=20 | N/A |
 
 **Key findings:**
-1. All pollutant outputs are highly correlated (r=0.60-0.93), validating the MOGP premise.
-2. ICM delivers the best raw predictive accuracy at full data (lowest NOx RMSE), exploiting the NOx-NO2 correlation. At small n it is more stable than LCM.
-3. In the low-data regime the independent GP is the most consistent performer on RMSE: it is best on C6H6 at all training sizes and competitive on CO, while ICM degrades badly on CO at n=160 and LCM spikes on NOx at n=80. The main advantage of MOGPs at small n is calibration (NLPD): cross-output coupling prevents the posterior variance from collapsing, where the independent GP spikes to ~35-40 nats for CO and ~20-25 nats for C6H6 at n=20. These calibration gains are output-specific (LCM is poorly calibrated on NO2 at n=20 and crashes on NOx at n=80), so neither coregionalization model reliably dominates across all outputs in the low-data setting.
-4. In the Bayesian optimisation experiment, both GP strategies dramatically outperform random search (~39% of true HV). Both reach ~90-93% of the true hypervolume; LCM shows faster early convergence in some seeds by exploiting CO-NO2 posterior correlations, but the two strategies are closely matched by N=40.
-5. The deep ensemble MLP fails catastrophically on C6H6 at all data sizes and has poor calibration at small n. Its uncertainty estimates are unreliable at n=20-40 regardless of output, unlike GPs where the posterior variance is principled even with few points.
+
+1. **At full data, coregionalization does not help.** Despite high inter-pollutant correlations (r=0.60–0.93), both ICM and LCM are outperformed by independent GPs on all four outputs at 4,858 training points. With sufficient data, each GP learns the input space thoroughly without needing cross-output borrowing, and the additional optimization burden of coregionalization parameters is a net cost.
+
+2. **Scale imbalance degrades coregionalization.** The ICM coregionalization matrix is dominated by NOx (entries: 3604 NOx–NOx, 405 NOx–NO2, ~0 for CO/C6H6), because marginal likelihood optimization is sensitive to raw output variance. The single shared latent process is allocated almost entirely to the highest-variance output, leaving CO and C6H6 poorly modelled. LCM partially mitigates this but exhibits the same pathology.
+
+3. **The low-data regime is where MOGPs deliver genuine value, but only on calibration.** At n=20, the independent GP NLPD spikes to 35–40 nats for CO and 20–25 nats for C6H6 — the posterior variance collapses without enough data. ICM and LCM stay at 5–10 nats for CO by exploiting cross-output coupling. This calibration advantage is output-specific (absent for NOx, negative for LCM on NO2) and not reflected in RMSE, where the independent GP remains competitive.
+
+4. **GP-based Bayesian optimization dramatically outperforms random search.** Both independent GP and LCM acquire ~90–93% of the true hypervolume in 70 evaluations, versus ~39% for random search. The choice of GP variant (independent vs MOGP) has a much smaller effect than the choice to use GP-guided acquisition at all.
+
+5. **The MLP is competitive at full data but brittle.** Its RMSE on CO (0.343), NOx (46.35), and NO2 (15.08) outperforms all GP variants at full data — a clean result for neural networks at scale. But C6H6 (RMSE 0.106 vs 0.032 for independent GP) exposes sensitivity to the output's skewed distribution, and the ensemble uncertainty is unreliable at n≤40.
 
 ---
 
 ## How to Run
 
+**Dependencies (GPyTorch-based, tested on Python 3.10):**
+
 ```bash
-pip install gpy numpy pandas scikit-learn matplotlib seaborn requests
+pip install torch==2.3.1+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install gpytorch==1.12 linear_operator==0.5.0
+pip install numpy pandas scikit-learn matplotlib seaborn scipy requests
 ```
 
-Run scripts in order:
+For CPU-only (no GPU), substitute `torch==2.3.1` without the `+cu121` flag.
+
+**Run scripts in order:**
 
 ```bash
 python 01_eda.py
 python 02_independent_gps.py
 python 03_icm_vs_lcm.py
 python 04_low_data_regime.py
-python 05_pareto_optimization.py   # ~15-20 min
+python 05_pareto_optimization.py   # ~15–20 min (pool-based active learning, 5 seeds)
 python 06_nn_comparison.py
 ```
 
-All outputs (plots + JSON results) are saved to `outputs/`. The dataset downloads automatically from UCI on first run.
+All outputs (plots + JSON results) are saved to `outputs/`. The dataset downloads automatically from UCI on first run. For the full-data GP run, a GPU is strongly recommended: the A100 on CSF3 reduces training time from several hours (CPU) to minutes per model. The SLURM submission script is at `submit_mogp.slurm`.
 
 ---
 
-## Dependencies
+## Dataset & References
 
-- [GPy](https://github.com/SheffieldML/GPy) for GP models and coregionalization kernels
-- NumPy, pandas, scikit-learn, matplotlib, seaborn
-- Python 3.10+
+- Dataset: [UCI Air Quality Data Set #360](https://archive.ics.uci.edu/dataset/360/air+quality) — De Vito et al. (2008)
+- GP framework: [GPyTorch](https://gpytorch.ai/) (Gardner et al., 2018)
+- ICM/LCM: Álvarez & Lawrence (2011), *Computationally efficient convolved multiple output Gaussian processes*
+- Multi-objective BO: Emmerich et al. (2006), hypervolume indicator; Thompson (1933), sampling-based acquisition
