@@ -396,7 +396,7 @@ class LCM:
         ARD: bool = True,
         n_restarts: int = 2,
         num_inducing: int = 500,
-        n_epochs: int = 150,
+        n_epochs: int = 300,
         batch_size: int = 256,
     ):
         self.num_latents  = num_latents
